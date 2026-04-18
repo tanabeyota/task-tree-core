@@ -1,0 +1,5365 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>task tree -アイデアが弾け、実る場所-</title>
+    <meta
+      name="description"
+      content="タスクをツリー形式で管理できる高機能アプリ。優先順位・タイマー・Markdownクリップボード連携対応。"
+    />
+    <style>
+      /* ==========================================
+           テーマ変数の定義
+        ========================================== */
+      :root {
+        --bg-color: #f4f5f7;
+        --grid-major: #e2e4e8;
+        --grid-minor: #eceef1;
+        --grid-line-major: rgba(0, 0, 0, 0.03);
+        --grid-line-minor: rgba(0, 0, 0, 0.015);
+        --text-main: #1a1a1a;
+        --text-sub: #64748b;
+        --text-placeholder: #cbd5e1;
+        --menu-bg: rgba(255, 255, 255, 0.95);
+        --menu-section-bg: #f8fafc;
+        --border-color: #e2e8f0;
+        --input-bg: #fff;
+        --input-border: #cbd5e1;
+        --btn-bg: #f8f9fa;
+        --btn-text: #adb5bd;
+        --btn-border: #dee2e6;
+        --line-default: #cbd5e1;
+        --color-green: #60d235;
+        --color-blue: #00c0ff;
+        --color-red: #fe007a;
+        --color-purple: #8b3dff;
+        --color-yellow: #ffd600;
+      }
+
+      [data-theme="dark"] {
+        --bg-color: #0f172a;
+        --grid-major: #1e293b;
+        --grid-minor: #152033;
+        --grid-line-major: rgba(255, 255, 255, 0.03);
+        --grid-line-minor: rgba(255, 255, 255, 0.015);
+        --text-main: #f8fafc;
+        --text-sub: #94a3b8;
+        --text-placeholder: #475569;
+        --menu-bg: rgba(30, 41, 59, 0.95);
+        --menu-section-bg: #0f172a;
+        --border-color: #334155;
+        --input-bg: #1e293b;
+        --input-border: #475569;
+        --btn-bg: #1e293b;
+        --btn-text: #64748b;
+        --btn-border: #334155;
+        --line-default: #475569;
+      }
+
+      /* ==========================================
+           ベーススタイル
+        ========================================== */
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--bg-color);
+        font-family:
+          "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans",
+          Meiryo, sans-serif;
+        overflow: hidden;
+        transition: background-color 0.3s ease;
+      }
+
+      #viewport {
+        /* fixed にすることでフォーカス時のブラウザ強制スクロールを防ぐ */
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        /* overflow: hidden でキャンバス外への描画をクリップ（白い領域・座標ズレの防止） */
+        overflow: hidden;
+        cursor: default;
+        background-color: var(--bg-color);
+        background-image:
+          linear-gradient(var(--grid-line-major) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid-line-major) 1px, transparent 1px),
+          linear-gradient(var(--grid-line-minor) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid-line-minor) 1px, transparent 1px);
+        background-size:
+          100px 100px,
+          100px 100px,
+          20px 20px,
+          20px 20px;
+        transition: background-color 0.3s ease;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      #canvas-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        /* width/height を 0 に固定してレイアウトサイズの肥大化を防ぐ。
+               overflow: visible なのでキャンバス内のノードは正常に描画される */
+        width: 0;
+        height: 0;
+        overflow: visible;
+        transform-origin: 0 0;
+      }
+
+      #svg-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        overflow: visible;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      #selection-box {
+        position: absolute;
+        border: 1px solid rgba(0, 123, 255, 0.8);
+        background-color: rgba(0, 123, 255, 0.15);
+        pointer-events: none;
+        display: none;
+        z-index: 9999;
+      }
+
+      /* ==========================================
+           UI コントロール (テーマトグル, ヘルプなど)
+        ========================================== */
+      #theme-toggle {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        font-size: 22px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        transition:
+          transform 0.2s,
+          background 0.3s,
+          border-color 0.3s;
+        backdrop-filter: blur(8px);
+      }
+
+      /* 優先タスクリスト（サイドバー） */
+      #priority-sidebar {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        width: 280px;
+        height: auto;
+        max-height: calc(100vh - 80px);
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(8px);
+        z-index: 1000;
+        display: grid;
+        grid-template-rows: 48px 1fr;
+        grid-template-columns: 100%;
+        overflow: hidden;
+        font-size: 13px;
+        transition:
+          width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+          grid-template-rows 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+          border-radius 0.35s ease,
+          background 0.35s ease,
+          box-shadow 0.35s ease,
+          border-color 0.35s ease;
+      }
+
+      #priority-sidebar.minimized {
+        width: 44px;
+        grid-template-rows: 44px 0fr;
+        min-height: 44px;
+        border-radius: 22px;
+        background: transparent;
+        box-shadow: none;
+        border-color: transparent;
+        backdrop-filter: none;
+      }
+
+      #priority-sidebar-header {
+        height: 48px;
+        box-sizing: border-box;
+        position: relative;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+        background: rgba(0, 0, 0, 0.02);
+        transition:
+          border-color 0.35s ease,
+          background 0.35s ease;
+      }
+
+      #priority-sidebar.minimized #priority-sidebar-header {
+        border-bottom-color: transparent;
+        background: transparent;
+      }
+
+      #priority-sidebar-header span:first-child {
+        position: absolute;
+        left: 16px;
+        top: 15px;
+        white-space: nowrap;
+        transition: opacity 0.2s ease;
+      }
+
+      #priority-sidebar.minimized #priority-sidebar-header span:first-child {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #priority-sidebar-count {
+        position: absolute;
+        right: 16px;
+        top: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: bold;
+        color: #fff !important;
+        background: #8b3dff; /* Purple */
+        border: none;
+        border-radius: 16px;
+        padding: 4px 12px;
+        cursor: pointer;
+        transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        box-shadow: 0 2px 5px rgba(139, 61, 255, 0.3);
+      }
+
+      #priority-sidebar-count:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 10px rgba(139, 61, 255, 0.5);
+        background: #9b51ff;
+      }
+
+      #priority-sidebar.minimized #priority-sidebar-count {
+        right: 0px;
+        top: 0px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        padding: 0;
+        font-size: 16px;
+        box-shadow: 0 4px 12px rgba(139, 61, 255, 0.4);
+      }
+
+      #priority-sidebar-list {
+        min-height: 0;
+        padding: 12px;
+        padding-top: 8px; /* Give space for priority badge */
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition:
+          opacity 0.3s ease,
+          padding 0.35s ease;
+      }
+
+      #priority-sidebar.minimized #priority-sidebar-list {
+        opacity: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        pointer-events: none;
+      }
+
+      .sidebar-item {
+        position: relative;
+        background: var(--node-bg);
+        border: 2px solid var(--border-color);
+        border-radius: 24px;
+        padding: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+      }
+
+      .sidebar-item:hover {
+        border-color: #8b3dff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(139, 61, 255, 0.2);
+      }
+
+      .sidebar-item .priority-badge {
+        top: -8px;
+        right: -8px;
+        left: auto;
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        display: flex; /* Override display: none from default priority-badge */
+      }
+
+      .sidebar-item .node-content-static {
+        margin-top: 4px;
+        margin-bottom: 4px;
+        word-break: break-all;
+        white-space: pre-wrap;
+        line-height: 1.4;
+      }
+
+      #theme-toggle:hover {
+        transform: scale(1.1);
+      }
+
+      /* ==========================================
+           ノード (タスク要素)
+        ========================================== */
+      .node-box {
+        position: absolute;
+        background: transparent;
+        border: 2.5px solid var(--color-green);
+        border-radius: 50px;
+        padding: 6px 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2;
+        min-width: 60px;
+        min-height: 28px;
+        width: fit-content;
+        /* 深度スケール用: 左上を基準にスケールし、下にのみ広がるようにする */
+        transform-origin: 0 0;
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease,
+          opacity 0.2s ease;
+        user-select: none;
+      }
+
+      .node-box::after {
+        /* 当たり判定を見た目の枠線に近い範囲に縮小（以前の right:-120px は広すぎた） */
+        content: "";
+        position: absolute;
+        top: -8px;
+        bottom: -8px;
+        left: -8px;
+        right: -8px;
+        background: transparent;
+        z-index: -1;
+        pointer-events: auto;
+      }
+
+      .node-box.selected {
+        box-shadow: 0 0 0 5px rgba(0, 123, 255, 0.15);
+        z-index: 4;
+      }
+
+      .node-box.drop-target {
+        opacity: 0.5;
+        z-index: 5;
+      }
+
+      .node-box.search-match {
+        box-shadow: 0 0 0 4px rgba(255, 214, 0, 0.5);
+      }
+
+      .node-box.search-focus {
+        box-shadow: 0 0 0 6px rgba(255, 214, 0, 1);
+        border-color: var(--color-yellow);
+        z-index: 6;
+      }
+
+      .node-input {
+        border: none;
+        outline: none;
+        background: transparent;
+        font-size: 17px;
+        font-weight: 500;
+        color: var(--text-main);
+        text-align: left;
+        pointer-events: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-width: 20px;
+        width: max-content;
+        max-width: 20em;
+        transition: color 0.3s;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .node-box.selected .node-input {
+        pointer-events: auto;
+      }
+
+      .node-input:empty::before {
+        content: attr(data-placeholder);
+        color: var(--text-placeholder);
+        pointer-events: none;
+        display: inline-block;
+        transition: color 0.3s;
+      }
+
+      .node-input ul,
+      .node-input ol {
+        margin: 4px 0;
+        padding-left: 24px;
+        text-align: left;
+      }
+
+      .node-input li {
+        margin-bottom: 2px;
+      }
+
+      /* リサイズハンドラ */
+      .resize-edge-right {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 16px;
+        cursor: ew-resize;
+        z-index: 20;
+        right: -8px;
+      }
+
+      .priority-badge {
+        position: absolute;
+        top: -14px;
+        right: -14px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: #8b3dff; /* purple */
+        color: #fff;
+        font-size: 16px;
+        font-weight: bold;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        pointer-events: none;
+      }
+
+      .priority-badge.visible {
+        display: flex;
+      }
+
+      .timer-badge {
+        position: absolute;
+        top: -18px;
+        left: 0;
+        font-size: 11px;
+        color: #aaa;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        font-weight: bold;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        z-index: 10;
+      }
+      .timer-badge.visible {
+        opacity: 1;
+      }
+
+      /* ノード操作ボタン */
+      .add-btn,
+      .add-parent-btn,
+      .collapse-btn,
+      .minimize-btn {
+        position: absolute;
+        background-color: var(--btn-bg);
+        color: var(--btn-text);
+        border: 2px solid var(--btn-border);
+        border-radius: 50%;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 10;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: all 0.1s;
+      }
+
+      .add-btn::before,
+      .add-parent-btn::before,
+      .collapse-btn::before,
+      .minimize-btn::before {
+        content: "";
+        position: absolute;
+        top: -15px;
+        bottom: -15px;
+        left: -15px;
+        right: -15px;
+        background: transparent;
+        border-radius: 50%;
+        z-index: -1;
+      }
+
+      .add-btn,
+      .add-parent-btn {
+        top: calc(50% - 16px);
+        width: 32px;
+        height: 32px;
+        font-size: 20px;
+      }
+
+      .collapse-btn,
+      .minimize-btn {
+        top: calc(50% - 14px);
+        width: 28px;
+        height: 28px;
+        font-size: 16px;
+      }
+
+      .add-btn {
+        right: -44px;
+      }
+
+      .collapse-btn {
+        right: -84px;
+      }
+
+      .add-parent-btn {
+        left: -44px;
+      }
+
+      .minimize-btn {
+        left: -84px;
+      }
+
+      .node-box:not(.is-root) .minimize-btn {
+        left: -44px;
+      }
+
+      .node-box:hover .add-btn,
+      .node-box:hover .minimize-btn {
+        display: flex;
+      }
+
+      .node-box.is-root:hover .add-parent-btn {
+        display: flex;
+      }
+
+      .node-box:not(.is-leaf):hover .collapse-btn {
+        display: flex;
+      }
+
+      .node-box.collapsed .collapse-btn,
+      .node-box.minimized .minimize-btn {
+        display: flex !important;
+        background-color: var(--input-bg);
+        color: #0ea5e9;
+        border-color: #0ea5e9;
+        font-size: 13px;
+      }
+
+      .node-box.minimized .node-input {
+        max-height: 32px;
+        overflow: hidden !important;
+        white-space: nowrap !important;
+        text-overflow: ellipsis !important;
+      }
+
+      .collapse-btn:hover,
+      .minimize-btn:hover,
+      .add-btn:hover,
+      .add-parent-btn:hover {
+        background-color: #00c0ff;
+        color: white;
+        border-color: #00c0ff;
+        transform: scale(1.1);
+      }
+
+      /* カレントタスク矢印 */
+      #current-task-arrow {
+        position: absolute;
+        width: 32px;
+        height: 48px;
+        pointer-events: none;
+        z-index: 3;
+        display: none;
+        transition:
+          left 0.1s,
+          top 0.1s,
+          color 0.3s ease;
+        animation: bounceArrow 1.5s infinite ease-in-out;
+      }
+
+      @keyframes bounceArrow {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-8px);
+        }
+      }
+
+      #current-task-arrow svg {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.15));
+      }
+
+      /* ==========================================
+           フローティングメニュー & タイマー
+        ========================================== */
+      #floating-menu {
+        position: absolute;
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        padding: 6px;
+        display: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        z-index: 100;
+        backdrop-filter: blur(8px);
+        transition:
+          background 0.3s,
+          border-color 0.3s;
+        white-space: nowrap;
+      }
+
+      .toolbar-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: transparent;
+        border: none;
+        color: var(--text-sub);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        transition:
+          background 0.2s,
+          color 0.2s;
+      }
+
+      .toolbar-btn:hover {
+        background: var(--grid-major);
+        color: var(--text-main);
+      }
+
+      .toolbar-btn.active {
+        background: #e0f2fe;
+        color: #0284c7;
+      }
+
+      [data-theme="dark"] .toolbar-btn.active {
+        background: #0c4a6e;
+        color: #38bdf8;
+      }
+
+      .toolbar-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--border-color);
+        margin: 0 6px;
+      }
+
+      .timer-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .timer-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+        width: 220px;
+        display: none;
+        flex-direction: column;
+        z-index: 101;
+        padding: 12px;
+        cursor: default;
+      }
+
+      .timer-dropdown input {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .timer-dropdown input {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
+      .timer-dropdown.show {
+        display: flex;
+      }
+
+      .tabs-header {
+        display: flex;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 12px;
+      }
+
+      .tab-btn {
+        flex: 1;
+        text-align: center;
+        padding: 6px 0;
+        font-size: 12px;
+        font-weight: bold;
+        color: var(--text-sub);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: 0.2s;
+      }
+
+      .tab-btn.active {
+        color: #0ea5e9;
+        border-bottom-color: #0ea5e9;
+      }
+
+      .tab-content {
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .tab-content.active {
+        display: flex;
+      }
+
+      #menu-colors {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .color-btn {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: transform 0.1s;
+      }
+
+      .color-btn:hover {
+        transform: scale(1.2);
+        border-color: var(--bg-color);
+      }
+
+      .input-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .input-row label {
+        font-size: 11px;
+        color: var(--text-sub);
+        font-weight: 500;
+        width: 35px;
+        white-space: nowrap;
+      }
+
+      .input-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        font-size: 12px;
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        outline: none;
+        background: var(--input-bg);
+        color: var(--text-main);
+      }
+
+      .input-row input:focus {
+        border-color: #00c0ff;
+      }
+
+      .btn-clear {
+        background: var(--bg-color);
+        color: var(--text-sub);
+        border: 1px solid var(--border-color);
+        padding: 4px;
+        border-radius: 4px;
+        font-size: 10px;
+        cursor: pointer;
+        transition: 0.2s;
+        width: 100%;
+        font-weight: bold;
+        margin-top: 4px;
+      }
+
+      .btn-clear:hover {
+        color: #ef4444;
+        border-color: #ef4444;
+        background: rgba(239, 68, 68, 0.05);
+      }
+
+      /* ==========================================
+           検索 & ヘルプUI
+        ========================================== */
+      #search-bar {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        padding: 6px 12px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        backdrop-filter: blur(8px);
+      }
+
+      #search-bar.show {
+        display: flex;
+      }
+
+      #search-input {
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--text-main);
+        font-size: 14px;
+        width: 180px;
+      }
+
+      #search-count {
+        color: var(--text-sub);
+        font-size: 12px;
+        min-width: 35px;
+        text-align: center;
+      }
+
+      .search-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-sub);
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .search-btn:hover {
+        background: var(--grid-major);
+        color: var(--text-main);
+      }
+
+      #help-text {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 1000;
+        color: var(--text-main);
+        font-size: 12px;
+        line-height: 1.6;
+        pointer-events: none;
+        display: block;
+      }
+
+      #help-text.hidden {
+        display: none;
+      }
+
+      kbd {
+        background: var(--grid-major);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 2px 5px;
+        font-size: 10px;
+        font-family: monospace;
+        font-weight: bold;
+        color: var(--text-sub);
+        box-shadow: 0 1px 0 var(--border-color);
+        margin: 0 2px;
+      }
+
+      /* トースト通知 */
+      #toast {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%) translateY(60px);
+        background: rgba(15, 23, 42, 0.9);
+        color: #f8fafc;
+        padding: 8px 18px;
+        border-radius: 8px;
+        font-size: 13px;
+        z-index: 9999;
+        opacity: 0;
+        transition:
+          opacity 0.3s,
+          transform 0.3s;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+      }
+
+      #toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      [data-theme="dark"]
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="priority-sidebar" class="minimized">
+      <div id="priority-sidebar-header">
+        <span>優先リスト</span>
+        <span id="priority-sidebar-count">0</span>
+      </div>
+      <div id="priority-sidebar-list"></div>
+    </div>
+
+    <button id="theme-toggle" title="テーマ切り替え">🌙</button>
+
+    <div id="search-bar">
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        stroke="var(--text-sub)"
+        stroke-width="2"
+        fill="none"
+      >
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" id="search-input" placeholder="ノードを検索..." />
+      <span id="search-count">0/0</span>
+      <button id="search-prev" class="search-btn" title="前へ (Shift+Enter)">
+        ▲
+      </button>
+      <button id="search-next" class="search-btn" title="次へ (Enter)">
+        ▼
+      </button>
+      <div class="toolbar-divider"></div>
+      <button
+        id="search-close"
+        class="search-btn"
+        title="閉じる (Esc / Ctrl+F)"
+      >
+        ✖
+      </button>
+    </div>
+
+    <div id="help-text">
+      <strong>機能説明</strong>
+      <span style="color: var(--text-sub)">(Escで切替 / 自動保存対応)</span
+      ><br />
+      <span style="color: var(--color-green)">●</span> 進行可能　<span
+        style="color: var(--color-blue)"
+        >●</span
+      >
+      完了　<span style="color: var(--color-red)">●</span> 待機　<span
+        style="color: var(--color-purple)"
+        >●</span
+      >
+      優先<br /><br />
+      <strong>基本操作</strong><br />
+      <kbd>Click</kbd> ノードを選択<br />
+      <kbd>Click</kbd>×2 / <kbd>Enter</kbd> テキスト編集<br />
+      <kbd>Esc</kbd> 編集終了 / 選択解除<br />
+      <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> ノード完全コピペ
+      (Markdown対応)<br /><br />
+      <strong>ツリーの操作</strong><br />
+      <kbd>Space</kbd> 子を折畳/展開　<kbd>Shift</kbd>+<kbd>Space</kbd>
+      自身を折畳/展開<br />
+      <kbd>Tab</kbd> 子ツリー追加 / 右へ移動<br />
+      <kbd>Shift</kbd>+<kbd>Tab</kbd> 親ツリーへ移動<br />
+      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 同列ツリー追加 / 下へ移動<br />
+      <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>
+      上の同列ツリーへ移動<br />
+      <kbd>Ctrl</kbd>+<kbd>F</kbd> 検索表示<br /><br />
+      <strong>優先順位 (1~9キー)</strong><br />
+      選択中: 優先度を設定 / 非選択時: 対象へジャンプ<br /><br />
+      <strong>ファイル保存・表示</strong><br />
+      <kbd>Ctrl</kbd>+<kbd>S</kbd>
+      上書き保存　<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> 別名で保存<br />
+      右ドラッグ: ズーム (<kbd>Shift</kbd>+右クリック: メニュー)
+    </div>
+
+    <div id="viewport">
+      <div id="canvas-container">
+        <svg id="svg-layer"></svg>
+        <div id="current-task-arrow">
+          <svg viewBox="0 0 24 36" fill="currentColor">
+            <path d="M7 0 H17 L15 22 H24 L12 36 L0 22 H9 Z" />
+          </svg>
+        </div>
+        <div id="floating-menu">
+          <button
+            id="btn-format-bold"
+            class="toolbar-btn"
+            title="太字 (Ctrl+B)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              stroke-width="2.5"
+              fill="none"
+            >
+              <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
+              <path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path>
+            </svg>
+          </button>
+          <button
+            id="btn-format-list"
+            class="toolbar-btn"
+            title="箇条書き (「・」を入力)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              stroke-width="2"
+              fill="none"
+            >
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-format-highlight"
+            class="toolbar-btn"
+            title="ハイライト"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              stroke-width="2"
+              fill="none"
+            >
+              <path
+                d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+              ></path>
+              <path d="M15 5l4 4"></path>
+              <path d="M9 15l4 4"></path>
+            </svg>
+          </button>
+          <div
+            class="toolbar-divider"
+            id="link-divider"
+            style="display: none"
+          ></div>
+          <button
+            id="btn-open-link"
+            class="toolbar-btn"
+            title="リンクを開く"
+            style="display: none"
+            onmousedown="
+              event.preventDefault();
+              window.open(this.dataset.href, '_blank');
+            "
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              stroke="currentColor"
+              stroke-width="2"
+              fill="none"
+            >
+              <path
+                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+              ></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </button>
+          <div class="toolbar-divider"></div>
+          <div class="timer-container">
+            <button
+              id="btn-timer-menu"
+              class="toolbar-btn"
+              title="タイマー設定"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </button>
+            <div id="timer-dropdown" class="timer-dropdown">
+              <div class="tabs-header">
+                <div class="tab-btn active" data-target="tab-deadline">
+                  締切タイマー
+                </div>
+                <div class="tab-btn" data-target="tab-wait">待機タイマー</div>
+              </div>
+              <div class="tab-content active" id="tab-deadline">
+                <div class="input-row">
+                  <label>締切</label
+                  ><input type="datetime-local" id="menu-deadline" />
+                </div>
+                <div class="input-row">
+                  <label>工数</label
+                  ><input
+                    type="number"
+                    id="menu-duration"
+                    min="0"
+                    step="0.5"
+                    placeholder="時間"
+                  />
+                </div>
+                <button class="btn-clear" id="btn-clear-deadline">
+                  時間をクリア
+                </button>
+              </div>
+              <div class="tab-content" id="tab-wait">
+                <div class="input-row">
+                  <label>待機</label
+                  ><input
+                    type="number"
+                    id="menu-waithours"
+                    min="0"
+                    step="0.5"
+                    placeholder="時間"
+                  />
+                </div>
+                <button class="btn-clear" id="btn-clear-wait">
+                  待機を解除
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div id="menu-colors">
+            <div
+              class="color-btn"
+              data-color="green"
+              style="background: var(--color-green)"
+              title="進行可能"
+            ></div>
+            <div
+              class="color-btn"
+              data-color="blue"
+              style="background: var(--color-blue)"
+              title="完了"
+            ></div>
+            <div
+              class="color-btn"
+              data-color="red"
+              style="background: var(--color-red)"
+              title="待機"
+            ></div>
+          </div>
+        </div>
+      </div>
+      <div id="selection-box"></div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      // ==========================================
+      // 1. 設定と状態 (Configuration & State)
+      // ==========================================
+      const CONFIG = {
+        colors: {
+          green: "#60d235",
+          blue: "#00c0ff",
+          red: "#fe007a",
+          purple: "#8b3dff",
+          yellow: "#ffd600",
+        },
+        layout: {
+          marginX: 80,
+          marginY: 20,
+          collisionMargin: 30,
+          siblingYOffset: 80,
+          parentXOffset: -150,
+          nodeBaseW: 120,
+          nodeBaseH: 50,
+        },
+      };
+
+      const DOM = {
+        viewport: document.getElementById("viewport"),
+        canvasContainer: document.getElementById("canvas-container"),
+        svgLayer: document.getElementById("svg-layer"),
+        selectionBox: document.getElementById("selection-box"),
+        floatMenu: document.getElementById("floating-menu"),
+        arrow: document.getElementById("current-task-arrow"),
+        themeToggle: document.getElementById("theme-toggle"),
+        searchBar: document.getElementById("search-bar"),
+        searchInput: document.getElementById("search-input"),
+        searchCount: document.getElementById("search-count"),
+        searchPrev: document.getElementById("search-prev"),
+        searchNext: document.getElementById("search-next"),
+        searchClose: document.getElementById("search-close"),
+        toast: document.getElementById("toast"),
+      };
+
+      const State = {
+        nodes: {},
+        rootIds: [], // ルートノードID一覧 (aria-posinset高速化用)
+        selectedIds: new Set(),
+        counter: 1,
+        canvasX: 0,
+        canvasY: 0,
+        canvasScale: 1,
+        arrowTargetId: null,
+        savedArrowTargetId: null,
+        isShiftDown: false,
+        internalClipboard: null, // { markdownText: string, roots: [] 各ノードの完全データ }
+        searchResults: [],
+        currentSearchIndex: -1,
+        lastEditedNodeId: null,
+      };
+
+      // ==========================================
+      // 2. データ永続化と履歴 (Storage & History)
+      // ==========================================
+      const StorageManager = {
+        save() {
+          Renderer.syncDataFromDOM();
+          const data = {
+            counter: State.counter,
+            nodes: State.nodes,
+            lastEditedNodeId: State.lastEditedNodeId,
+            arrowTargetId: State.arrowTargetId,
+          };
+          try {
+            localStorage.setItem("taskTreeData", JSON.stringify(data));
+          } catch (e) {
+            console.warn("Storage save failed", e);
+          }
+        },
+        load() {
+          let raw = null;
+          try {
+            raw = localStorage.getItem("taskTreeData");
+          } catch (e) {
+            console.warn("Storage load failed", e);
+            return false;
+          }
+          if (!raw) return false;
+          try {
+            const data = JSON.parse(raw);
+            State.counter = data.counter;
+            State.nodes = data.nodes;
+            if (data.lastEditedNodeId)
+              State.lastEditedNodeId = data.lastEditedNodeId;
+            if (data.arrowTargetId) State.arrowTargetId = data.arrowTargetId;
+            // rootIds を確実に再構築 (万が一のnull除外)
+            State.rootIds = Object.keys(State.nodes).filter(
+              (k) => State.nodes[k] && !State.nodes[k].parentId,
+            );
+            return true;
+          } catch (e) {
+            console.warn("JSON parse failed", e);
+            return false;
+          }
+        },
+      };
+
+      const HistoryManager = {
+        history: [],
+        index: -1,
+        isRestoring: false,
+
+        save() {
+          if (this.isRestoring) return;
+          Renderer.syncDataFromDOM();
+          const snapshot = {
+            counter: State.counter,
+            nodes: JSON.parse(JSON.stringify(State.nodes)),
+            rootIds: [...State.rootIds],
+          };
+
+          if (this.index >= 0) {
+            const last = this.history[this.index];
+            if (
+              JSON.stringify(last.nodes) === JSON.stringify(snapshot.nodes) &&
+              JSON.stringify(last.rootIds) === JSON.stringify(snapshot.rootIds)
+            ) {
+              return; // 変更がない場合は履歴に追加しない
+            }
+          }
+
+          if (this.index < this.history.length - 1) {
+            this.history = this.history.slice(0, this.index + 1);
+          }
+
+          this.history.push(snapshot);
+
+          if (this.history.length > 50) {
+            this.history.shift();
+          } else {
+            this.index++;
+          }
+
+          SidebarManager.update();
+          StorageManager.save();
+        },
+
+        load(snapshot) {
+          this.isRestoring = true;
+          State.counter = snapshot.counter;
+          State.nodes = JSON.parse(JSON.stringify(snapshot.nodes));
+          State.rootIds = snapshot.rootIds
+            ? [...snapshot.rootIds]
+            : Object.keys(State.nodes).filter((k) => !State.nodes[k].parentId);
+          Renderer.rebuildAll();
+          UIManager.selectOnly(null);
+          this.isRestoring = false;
+        },
+
+        undo() {
+          if (this.index > 0) {
+            const currentNodes = this.history[this.index].nodes;
+            this.index--;
+            const prevNodes = this.history[this.index].nodes;
+
+            let nodeToFocus = null;
+            for (const id in currentNodes) {
+              if (!prevNodes[id]) {
+                // 取り消しによって消滅したノードを特定
+                const pId = currentNodes[id].parentId;
+                if (pId) {
+                  const siblings = currentNodes[pId].childrenIds;
+                  const idx = siblings.indexOf(id);
+                  if (idx > 0) {
+                    // 兄弟として追加された場合は一つ前の兄弟（元のノード）へ戻る
+                    nodeToFocus = siblings[idx - 1];
+                  } else {
+                    // 最初の子として追加された場合は親へ戻る
+                    nodeToFocus = pId;
+                  }
+                } else {
+                  // ルートノードの場合
+                  const rootIds = Object.keys(currentNodes).filter(
+                    (k) => !currentNodes[k].parentId,
+                  );
+                  const idx = rootIds.indexOf(id);
+                  if (idx > 0) nodeToFocus = rootIds[idx - 1];
+                }
+                break;
+              }
+            }
+
+            this.load(this.history[this.index]);
+            StorageManager.save();
+
+            if (nodeToFocus && State.nodes[nodeToFocus]) {
+              setTimeout(() => {
+                UIManager.selectOnly(nodeToFocus);
+                const el = Renderer.getNodeEl(nodeToFocus);
+                if (el) UIManager.focusToEnd(el.querySelector(".node-input"));
+              }, 50);
+            }
+          }
+        },
+
+        redo() {
+          if (this.index < this.history.length - 1) {
+            this.index++;
+            this.load(this.history[this.index]);
+            StorageManager.save();
+          }
+        },
+      };
+
+      // ==========================================
+      // 3. レンダリング (View / Renderer)
+      // ==========================================
+      const Renderer = {
+        getNodeEl(id) {
+          return document.getElementById(id);
+        },
+
+        syncDataFromDOM() {
+          for (let id in State.nodes) {
+            const el = this.getNodeEl(id);
+            if (el && !State.nodes[id].isHidden) {
+              State.nodes[id].html = el.querySelector(".node-input").innerHTML;
+              State.nodes[id].w = el.offsetWidth;
+              State.nodes[id].h = el.offsetHeight;
+            }
+          }
+        },
+
+        rebuildAll() {
+          document.querySelectorAll(".node-box").forEach((el) => el.remove());
+          for (let id in State.nodes) {
+            this.createNodeDOM(id);
+          }
+          this.updateVisibility();
+          this.updateLines();
+          UIManager.updateArrow();
+          SearchManager.doSearch();
+          SidebarManager.update();
+        },
+
+        createNodeDOM(id) {
+          const n = State.nodes[id];
+
+          // ARIAのために兄弟・深度を計算
+          const depth = NodeManager.getDepth(id);
+          const siblings = n.parentId
+            ? State.nodes[n.parentId].childrenIds
+            : State.rootIds;
+          const posInSet = siblings.indexOf(id) + 1;
+          const setSize = siblings.length;
+
+          const el = document.createElement("div");
+          el.className =
+            "node-box" +
+            (n.childrenIds.length === 0 ? " is-leaf" : "") +
+            (n.isMinimized ? " minimized" : "");
+          el.id = id;
+          el.style.left = n.x + "px";
+          el.style.top = n.y + "px";
+          el.style.borderColor = CONFIG.colors[n.color];
+
+          // 子の数に基づくスケール適用
+          const scale = NodeManager.getScale(id);
+          el.style.transform = `scale(${scale})`;
+
+          // WAI-ARIA
+          el.setAttribute("role", "treeitem");
+          el.setAttribute("aria-level", depth + 1);
+          el.setAttribute("aria-posinset", posInSet);
+          el.setAttribute("aria-setsize", setSize);
+          if (n.childrenIds.length > 0) {
+            el.setAttribute("aria-expanded", String(!n.isCollapsed));
+          }
+          el.setAttribute(
+            "aria-label",
+            n.html.replace(/<[^>]*>/g, "").trim() || "タスク",
+          );
+
+          el.innerHTML = `
+                    <div class="timer-badge"></div>
+                    <div class="priority-badge${n.priority ? " visible" : ""}">${n.priority || ""}</div>
+                    <div class="node-input" contenteditable="true" data-placeholder="タスク名">${n.html}</div>
+                    <div class="resize-edge-right"></div>
+                    <button class="add-parent-btn" title="親を追加">+</button>
+                    <button class="minimize-btn" title="ノードを縮小">${n.isMinimized ? "+" : "-"}</button>
+                    <button class="collapse-btn">-</button>
+                    <button class="add-btn" title="子を追加">+</button>
+                `;
+
+          if (n.isMinimized) {
+            el.querySelector(".node-input").style.maxWidth =
+              (n.minimizedMaxWidth || 60) + "px";
+          } else if (n.manualMaxWidth) {
+            el.querySelector(".node-input").style.maxWidth =
+              n.manualMaxWidth + "px";
+          }
+
+          DOM.canvasContainer.appendChild(el);
+        },
+
+        updateNodePos(id) {
+          const el = this.getNodeEl(id);
+          const n = State.nodes[id];
+          if (el) {
+            el.style.left = n.x + "px";
+            el.style.top = n.y + "px";
+          }
+        },
+
+        updateNodeColor(id) {
+          const el = this.getNodeEl(id);
+          if (el) {
+            el.style.borderColor = CONFIG.colors[State.nodes[id].color];
+          }
+        },
+
+        updateNodeTimerInfo(id) {
+          const el = this.getNodeEl(id);
+          if (!el) return;
+
+          let tb = el.querySelector(".timer-badge");
+          if (!tb) return;
+
+          const n = State.nodes[id];
+          if (n.color === "blue") {
+            tb.classList.remove("visible");
+            return;
+          }
+
+          let text = "";
+          if (n.waitHours > 0 && n.waitStartTime) {
+            const elapsedMs = Date.now() - new Date(n.waitStartTime).getTime();
+            const remainH =
+              Math.max(0, n.waitHours * 3600000 - elapsedMs) / 3600000;
+            let dispH = Math.max(0.1, Math.ceil(remainH * 10) / 10).toFixed(1);
+            text = dispH + "h";
+            tb.style.color = "#ff4444";
+          } else if (n.deadline) {
+            const d = new Date(n.deadline);
+            const MM = d.getMonth() + 1;
+            const DD = d.getDate();
+            const hh = d.getHours().toString().padStart(2, "0");
+            const mm = d.getMinutes().toString().padStart(2, "0");
+
+            if (n.effectiveDeadlineMs && n.effectiveDeadlineMs < d.getTime()) {
+              text = `締め切り${MM}.${DD} ${hh}:${mm} (前倒し)`;
+              tb.style.color = "#ff9900";
+            } else {
+              text = `締め切り${MM}.${DD} ${hh}:${mm}`;
+              tb.style.color = "#aaa";
+            }
+          }
+
+          if (text) {
+            tb.textContent = text;
+            tb.classList.add("visible");
+          } else {
+            tb.classList.remove("visible");
+          }
+        },
+
+        updateNodeScale(id) {
+          const el = this.getNodeEl(id);
+          if (el) {
+            const scale = NodeManager.getScale(id);
+            el.style.transform = `scale(${scale})`;
+          }
+          const n = State.nodes[id];
+          if (n && n.childrenIds) {
+            n.childrenIds.forEach((c) => this.updateNodeScale(c));
+          }
+        },
+
+        updateAllPriorityBadges() {
+          for (const id in State.nodes) {
+            const el = this.getNodeEl(id);
+            if (!el) continue;
+            const badge = el.querySelector(".priority-badge");
+            if (!badge) continue;
+            const p = State.nodes[id].priority;
+            if (p) {
+              badge.textContent = p;
+              badge.classList.add("visible");
+            } else {
+              badge.textContent = "";
+              badge.classList.remove("visible");
+            }
+          }
+        },
+
+        updateVisibility() {
+          // すべてのノードの非表示フラグをリセット
+          for (let i in State.nodes) {
+            State.nodes[i].isHidden = false;
+          }
+
+          // 畳み込まれているノードの子孫を非表示に設定
+          for (let i in State.nodes) {
+            if (State.nodes[i].isCollapsed) {
+              NodeManager.getDescendants(i).forEach((d) => {
+                State.nodes[d].isHidden = true;
+              });
+            }
+          }
+
+          // DOMへの反映
+          for (let i in State.nodes) {
+            const el = this.getNodeEl(i);
+            const n = State.nodes[i];
+            if (!el) continue;
+
+            if (n.isHidden) {
+              el.style.display = "none";
+              State.selectedIds.delete(i);
+            } else {
+              el.style.display = "flex";
+              n.w = el.offsetWidth;
+              n.h = el.offsetHeight;
+            }
+
+            // aria-expanded を同期
+            if (n.childrenIds.length > 0) {
+              el.setAttribute("aria-expanded", String(!n.isCollapsed));
+            } else {
+              el.removeAttribute("aria-expanded");
+            }
+
+            const btn = el.querySelector(".collapse-btn");
+            if (n.isCollapsed) {
+              el.classList.add("collapsed");
+              if (btn) btn.textContent = NodeManager.getDescendants(i).length;
+            } else {
+              el.classList.remove("collapsed");
+              if (btn) btn.textContent = "-";
+            }
+          }
+        },
+
+        updateLines() {
+          DOM.svgLayer.innerHTML = "";
+          for (let i in State.nodes) {
+            const n = State.nodes[i];
+            const pEl = this.getNodeEl(i);
+
+            if (n.isHidden || !pEl) continue;
+
+            pEl.classList.toggle("is-root", !n.parentId);
+            pEl.classList.toggle("is-leaf", n.childrenIds.length === 0);
+
+            const pScale = NodeManager.getScale(i);
+            const pW = pEl.offsetWidth * pScale;
+            const pH = pEl.offsetHeight * pScale; // transform-origin: 0 0 なのでスケール後の高さの半分が視覚的中心
+
+            if (n.isCollapsed && n.childrenIds.length > 0) {
+              const sx = n.x + pW;
+              const sy = n.y + pH / 2;
+              const ex = sx + 56 * pScale; // .collapse-btn left edge is ~56px out
+
+              const path = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "path",
+              );
+              path.setAttribute("d", `M ${sx} ${sy} L ${ex} ${sy}`);
+              path.setAttribute(
+                "stroke",
+                CONFIG.colors[n.color] ||
+                  getComputedStyle(document.documentElement)
+                    .getPropertyValue("--line-default")
+                    .trim() ||
+                  "#cbd5e1",
+              );
+              path.setAttribute("stroke-width", (2.5 * pScale).toString());
+              path.setAttribute("fill", "none");
+              DOM.svgLayer.appendChild(path);
+            }
+
+            n.childrenIds.forEach((c) => {
+              const cN = State.nodes[c];
+              const cEl = this.getNodeEl(c);
+
+              if (cN.isHidden || !cEl) return;
+
+              const cScale = NodeManager.getScale(c);
+              const cH = cEl.offsetHeight * cScale; // 接続先もスケール済みの視覚的中心
+
+              const sx = n.x + pW;
+              const sy = n.y + pH / 2;
+              const ex = cN.x;
+              const ey = cN.y + cH / 2;
+
+              const path = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "path",
+              );
+              const cx = Math.max(40 * cScale, (ex - sx) / 2);
+
+              path.setAttribute(
+                "d",
+                `M ${sx} ${sy} C ${sx + cx} ${sy}, ${ex - cx} ${ey}, ${ex} ${ey}`,
+              );
+              path.setAttribute(
+                "stroke",
+                CONFIG.colors[cN.color] ||
+                  getComputedStyle(document.documentElement)
+                    .getPropertyValue("--line-default")
+                    .trim() ||
+                  "#cbd5e1",
+              );
+              path.setAttribute("stroke-width", (2.5 * cScale).toString());
+              path.setAttribute("fill", "none");
+
+              DOM.svgLayer.appendChild(path);
+            });
+          }
+        },
+      };
+
+      // ==========================================
+      // 4. UI 制御 (UIManager)
+      // ==========================================
+      const UIManager = {
+        initTheme() {
+          const saved = localStorage.getItem("taskTreeTheme") || "light";
+          document.documentElement.setAttribute("data-theme", saved);
+          DOM.themeToggle.textContent = saved === "dark" ? "☀️" : "🌙";
+
+          DOM.themeToggle.addEventListener("click", () => {
+            const t =
+              document.documentElement.getAttribute("data-theme") === "dark"
+                ? "light"
+                : "dark";
+            document.documentElement.setAttribute("data-theme", t);
+            localStorage.setItem("taskTreeTheme", t);
+            DOM.themeToggle.textContent = t === "dark" ? "☀️" : "🌙";
+            UIManager.updateMenu();
+          });
+        },
+
+        updateTransform() {
+          DOM.canvasContainer.style.transform = `translate(${State.canvasX}px, ${State.canvasY}px) scale(${State.canvasScale})`;
+
+          // フラクタル無限方眼ロジック
+          const log5Scale = Math.log(State.canvasScale) / Math.log(5);
+          const layer = Math.floor(log5Scale);
+          const frac = log5Scale - layer; // 0.0 ~ 1.0 (次のレイヤーへの進行度)
+          const effScale = Math.pow(5, frac); // 1.0 ~ 5.0 の間でループ
+
+          const s1 = 4 * effScale;
+          const s2 = 20 * effScale;
+          const s3 = 100 * effScale;
+
+          const isDark =
+            document.documentElement.getAttribute("data-theme") === "dark";
+          const rgb = isDark ? "255, 255, 255" : "0, 0, 0";
+
+          const maxAlphaMinor = isDark ? 0.015 : 0.015;
+          const maxAlphaMajor = isDark ? 0.03 : 0.03;
+
+          // レイヤーのフェードイン/アウト
+          const a1 = maxAlphaMinor * frac;
+          const a2 = maxAlphaMinor + (maxAlphaMajor - maxAlphaMinor) * frac;
+          const a3 = maxAlphaMajor * (1 - frac);
+
+          DOM.viewport.style.backgroundImage = `
+                    linear-gradient(rgba(${rgb}, ${a3}) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(${rgb}, ${a3}) 1px, transparent 1px),
+                    linear-gradient(rgba(${rgb}, ${a2}) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(${rgb}, ${a2}) 1px, transparent 1px),
+                    linear-gradient(rgba(${rgb}, ${a1}) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(${rgb}, ${a1}) 1px, transparent 1px)
+                `;
+          DOM.viewport.style.backgroundSize = `${s3}px ${s3}px, ${s3}px ${s3}px, ${s2}px ${s2}px, ${s2}px ${s2}px, ${s1}px ${s1}px, ${s1}px ${s1}px`;
+          const cx = State.canvasX;
+          const cy = State.canvasY;
+          DOM.viewport.style.backgroundPosition = `${cx}px ${cy}px, ${cx}px ${cy}px, ${cx}px ${cy}px, ${cx}px ${cy}px, ${cx}px ${cy}px, ${cx}px ${cy}px`;
+        },
+
+        selectOnly(id) {
+          State.selectedIds.forEach((sid) => {
+            const el = Renderer.getNodeEl(sid);
+            if (el) el.classList.remove("selected");
+          });
+          State.selectedIds.clear();
+
+          if (id && State.nodes[id]) {
+            State.selectedIds.add(id);
+            Renderer.getNodeEl(id).classList.add("selected");
+          } else {
+            if (document.activeElement?.classList.contains("node-input")) {
+              document.activeElement.blur();
+            }
+            window.getSelection()?.removeAllRanges();
+          }
+          this.updateMenu();
+          this.updateArrow();
+        },
+
+        updateMenu() {
+          if (State.selectedIds.size === 0) {
+            DOM.floatMenu.style.display = "none";
+            return;
+          }
+
+          const id = Array.from(State.selectedIds)[0];
+          const n = State.nodes[id];
+          const el = Renderer.getNodeEl(id);
+
+          if (!el || n.isHidden) {
+            DOM.floatMenu.style.display = "none";
+            return;
+          }
+
+          const scale = NodeManager.getScale(id);
+          const bnds = LayoutEngine._getScaledBounds(id);
+
+          DOM.floatMenu.style.display = "flex";
+          DOM.floatMenu.style.transform = `scale(${scale})`;
+          DOM.floatMenu.style.transformOrigin = "top center";
+          DOM.floatMenu.style.left =
+            bnds.l + bnds.w / 2 - DOM.floatMenu.offsetWidth / 2 + "px";
+
+          let menuTop = bnds.b + 8;
+          const maxWorldTop =
+            (window.innerHeight - 80 - State.canvasY) / State.canvasScale;
+          if (menuTop > maxWorldTop) {
+            menuTop = Math.max(bnds.t + 40, maxWorldTop);
+          }
+          DOM.floatMenu.style.top = menuTop + "px";
+
+          if (State.selectedIds.size > 1) {
+            if (document.activeElement?.id !== "menu-deadline")
+              document.getElementById("menu-deadline").value = "";
+            if (document.activeElement?.id !== "menu-duration")
+              document.getElementById("menu-duration").value = "";
+            if (document.activeElement?.id !== "menu-waithours")
+              document.getElementById("menu-waithours").value = "";
+          } else {
+            if (document.activeElement?.id !== "menu-deadline")
+              document.getElementById("menu-deadline").value = n.deadline || "";
+            if (document.activeElement?.id !== "menu-duration")
+              document.getElementById("menu-duration").value = n.duration || "";
+            if (document.activeElement?.id !== "menu-waithours") {
+              if (n.waitHours > 0 && n.waitStartTime) {
+                const elapsedMs =
+                  Date.now() - new Date(n.waitStartTime).getTime();
+                const remainH =
+                  Math.max(0, n.waitHours * 3600000 - elapsedMs) / 3600000;
+                document.getElementById("menu-waithours").value = Math.max(
+                  0.1,
+                  Math.ceil(remainH * 10) / 10,
+                ).toFixed(1);
+              } else {
+                document.getElementById("menu-waithours").value = "";
+              }
+            }
+          }
+
+          // カラーパネル: 常時有効（中間ノードでも使えるよう改修）
+          const cd = document.getElementById("menu-colors");
+          cd.style.opacity = "1";
+          cd.style.pointerEvents = "auto";
+
+          document
+            .getElementById("btn-format-bold")
+            .classList.toggle("active", document.queryCommandState("bold"));
+          document
+            .getElementById("btn-format-list")
+            .classList.toggle(
+              "active",
+              document.queryCommandState("insertUnorderedList"),
+            );
+
+          let isH = false;
+          let linkNode = null;
+          let node = window.getSelection()?.anchorNode;
+          while (
+            node &&
+            node.nodeType !== 9 &&
+            !node.classList?.contains("node-box")
+          ) {
+            if (node.nodeType === 1) {
+              if (
+                node.style.backgroundColor &&
+                node.style.backgroundColor !== "transparent" &&
+                node.style.backgroundColor !== "rgba(0, 0, 0, 0)"
+              ) {
+                isH = true;
+              }
+              if (node.tagName === "A" && node.href) {
+                linkNode = node;
+              }
+            }
+            node = node.parentNode;
+          }
+          document
+            .getElementById("btn-format-highlight")
+            .classList.toggle("active", isH);
+
+          const btnLink = document.getElementById("btn-open-link");
+          const linkDiv = document.getElementById("link-divider");
+          if (linkNode) {
+            btnLink.style.display = "flex";
+            linkDiv.style.display = "block";
+            btnLink.dataset.href = linkNode.href;
+          } else {
+            btnLink.style.display = "none";
+            linkDiv.style.display = "none";
+          }
+        },
+
+        updateArrow() {
+          const n = State.nodes[State.arrowTargetId];
+          const el = Renderer.getNodeEl(State.arrowTargetId);
+          if (n && el && !n.isHidden) {
+            const scale = NodeManager.getScale(State.arrowTargetId);
+            const bnds = LayoutEngine._getScaledBounds(State.arrowTargetId);
+            DOM.arrow.style.display = "block";
+            DOM.arrow.style.transform = `scale(${scale})`;
+            DOM.arrow.style.transformOrigin = "bottom center";
+            // The arrow itself is approx 32px wide and 32px tall.
+            DOM.arrow.style.left = bnds.l + bnds.w / 2 - 16 + "px";
+            DOM.arrow.style.top = bnds.t - 48 + "px"; // 少し上に配置し被りを防止
+            DOM.arrow.style.color = CONFIG.colors[n.color];
+          } else {
+            DOM.arrow.style.display = "none";
+          }
+        },
+
+        focusToEnd(el) {
+          if (!el) return;
+          // preventScroll: true でブラウザの強制スクロールを抑制
+          el.focus({ preventScroll: true });
+          if (window.getSelection && document.createRange) {
+            const r = document.createRange();
+            r.selectNodeContents(el);
+            r.collapse(false);
+            const s = window.getSelection();
+            s.removeAllRanges();
+            s.addRange(r);
+          }
+        },
+
+        showToast(msg, duration = 2000) {
+          DOM.toast.textContent = msg;
+          DOM.toast.classList.add("show");
+          clearTimeout(this._toastTimer);
+          this._toastTimer = setTimeout(
+            () => DOM.toast.classList.remove("show"),
+            duration,
+          );
+        },
+      };
+
+      // ==========================================
+      // 5. カメラ制御 (CameraManager)
+      // ==========================================
+      const CameraManager = {
+        _rafId: null,
+
+        panToTarget(tx, ty, targetScale = null) {
+          if (this._rafId) cancelAnimationFrame(this._rafId);
+          const tick = () => {
+            State.canvasX += (tx - State.canvasX) * 0.12;
+            State.canvasY += (ty - State.canvasY) * 0.12;
+            if (targetScale !== null) {
+              State.canvasScale += (targetScale - State.canvasScale) * 0.12;
+            }
+            UIManager.updateTransform();
+
+            if (
+              Math.abs(tx - State.canvasX) > 0.5 ||
+              Math.abs(ty - State.canvasY) > 0.5 ||
+              (targetScale !== null &&
+                Math.abs(targetScale - State.canvasScale) > 0.01)
+            ) {
+              this._rafId = requestAnimationFrame(tick);
+            } else {
+              State.canvasX = tx;
+              State.canvasY = ty;
+              if (targetScale !== null) State.canvasScale = targetScale;
+              UIManager.updateTransform();
+              this._rafId = null;
+            }
+          };
+          this._rafId = requestAnimationFrame(tick);
+        },
+
+        jumpTo(id) {
+          const n = State.nodes[id];
+          const el = Renderer.getNodeEl(id);
+          if (!n || !el || n.isHidden) return;
+
+          const scale = NodeManager.getScale(id);
+          const targetX =
+            window.innerWidth / 2 -
+            (n.x + (el.offsetWidth * scale) / 2) * State.canvasScale;
+          const targetY =
+            window.innerHeight / 2 -
+            (n.y + (el.offsetHeight * scale) / 2) * State.canvasScale;
+
+          this.panToTarget(targetX, targetY);
+        },
+
+        panToNodeIfOffscreen(id) {
+          const n = State.nodes[id];
+          const el = Renderer.getNodeEl(id);
+          if (!n || !el || n.isHidden) return;
+
+          const sw = window.innerWidth;
+          const sh = window.innerHeight;
+          const sc = State.canvasScale;
+
+          const nodeScale = NodeManager.getScale(id);
+          const screenX = n.x * sc + State.canvasX;
+          const screenY = n.y * sc + State.canvasY;
+          const cw = el.offsetWidth * nodeScale * sc;
+          const ch = el.offsetHeight * nodeScale * sc;
+
+          const padding = 80;
+          let tx = State.canvasX;
+          let ty = State.canvasY;
+          let needsPan = false;
+
+          const sidebar = document.getElementById("priority-sidebar");
+          const sidebarOffset =
+            sidebar && !sidebar.classList.contains("minimized") ? 320 : 60;
+
+          if (screenX < padding) {
+            tx += padding - screenX;
+            needsPan = true;
+          } else if (screenX + cw > sw - padding - sidebarOffset) {
+            tx -= screenX + cw - (sw - padding - sidebarOffset);
+            needsPan = true;
+          }
+
+          if (screenY < padding) {
+            ty += padding - screenY;
+            needsPan = true;
+          } else if (screenY + ch > sh - padding) {
+            ty -= screenY + ch - (sh - padding);
+            needsPan = true;
+          }
+
+          if (needsPan) {
+            this.panToTarget(tx, ty);
+          }
+        },
+
+        panTo(viewX, viewY, targetScale = null) {
+          // Sidebar panTo API
+          const targetX =
+            window.innerWidth / 2 - viewX * (targetScale || State.canvasScale);
+          const targetY =
+            window.innerHeight / 2 - viewY * (targetScale || State.canvasScale);
+          this.panToTarget(targetX, targetY, targetScale);
+        },
+
+        cancel() {
+          if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+          }
+        },
+      };
+
+      // ==========================================
+      // 6. ロジック (NodeManager & LayoutEngine)
+      // ==========================================
+      const NodeManager = {
+        getDepth(id) {
+          let d = 0;
+          let cur = State.nodes[id];
+          while (cur && cur.parentId) {
+            d++;
+            cur = State.nodes[cur.parentId];
+          }
+          return d;
+        },
+
+        getScale(id) {
+          return Math.pow(0.9, NodeManager.getDepth(id));
+        },
+
+        create(x, y, pId, html = "", focus = true) {
+          Renderer.syncDataFromDOM();
+          const id = "node_" + State.counter++;
+
+          // Rule 4: 上流のどこかに優先順位があれば「紫色」で作る
+          let hasPriorityAncestor = false;
+          let cur = pId ? State.nodes[pId] : null;
+          while (cur) {
+            if (cur.priority > 0) {
+              hasPriorityAncestor = true;
+              break;
+            }
+            cur = cur.parentId ? State.nodes[cur.parentId] : null;
+          }
+          const initialColor = hasPriorityAncestor ? "purple" : "green";
+
+          State.nodes[id] = {
+            id,
+            parentId: pId,
+            childrenIds: [],
+            x,
+            y,
+            w: null,
+            manualMaxWidth: null,
+            h: 28,
+            html,
+            color: initialColor,
+            manualColor: initialColor,
+            deadline: "",
+            duration: 0,
+            waitHours: 0,
+            waitStartTime: null,
+            isCollapsed: false,
+            isHidden: false,
+            priority: 0,
+          };
+
+          if (pId && State.nodes[pId]) {
+            State.nodes[pId].childrenIds.push(id);
+          } else {
+            // ルートノードリストを更新
+            State.rootIds.push(id);
+          }
+
+          Renderer.createNodeDOM(id);
+          Renderer.updateVisibility();
+          this.recalculateColor(pId || id);
+
+          State.arrowTargetId = id;
+          State.savedArrowTargetId = null;
+          UIManager.selectOnly(id);
+          setTimeout(() => CameraManager.panToNodeIfOffscreen(id), 50); // レイアウト計算後にパン判定
+
+          if (!html && focus) {
+            setTimeout(
+              () =>
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(id).querySelector(".node-input"),
+                ),
+              50,
+            );
+          }
+          State.justCreatedNodeId = id;
+          return id;
+        },
+
+        delete(id) {
+          if (!State.nodes[id]) return;
+
+          [...State.nodes[id].childrenIds].forEach((c) => this.delete(c));
+
+          const pId = State.nodes[id].parentId;
+          if (pId && State.nodes[pId]) {
+            State.nodes[pId].childrenIds = State.nodes[pId].childrenIds.filter(
+              (c) => c !== id,
+            );
+          } else {
+            // ルートノードリストから除去
+            State.rootIds = State.rootIds.filter((r) => r !== id);
+          }
+
+          Renderer.getNodeEl(id)?.remove();
+          delete State.nodes[id];
+
+          if (State.arrowTargetId === id) {
+            let fallbackId = null;
+            if (pId) {
+              let curr = pId;
+              while (curr) {
+                if (
+                  State.nodes[curr] &&
+                  (State.nodes[curr].color === "green" ||
+                    State.nodes[curr].color === "purple")
+                ) {
+                  fallbackId = curr;
+                  break;
+                }
+                curr = State.nodes[curr].parentId;
+              }
+            }
+            if (!fallbackId) {
+              fallbackId = State.rootIds.find(
+                (rId) =>
+                  State.nodes[rId] &&
+                  (State.nodes[rId].color === "green" ||
+                    State.nodes[rId].color === "purple"),
+              );
+            }
+            State.arrowTargetId = fallbackId || null;
+            UIManager.updateArrow();
+          }
+
+          if (pId) this.recalculateColor(pId);
+          LayoutEngine.resolveCollisions();
+          Renderer.updateLines();
+        },
+
+        duplicate(sId, pId, fX, fY) {
+          const s = State.nodes[sId];
+          if (!s) return null;
+
+          let tx =
+            fX !== undefined
+              ? fX
+              : pId
+                ? LayoutEngine._getScaledBounds(pId).r +
+                  CONFIG.layout.marginX * NodeManager.getScale(pId)
+                : s.x + 50;
+          let ty =
+            fY !== undefined
+              ? fY
+              : pId
+                ? State.nodes[pId].y + State.nodes[pId].childrenIds.length * 60
+                : s.y + 50;
+
+          const nId = this.create(tx, ty, pId, s.html, false);
+
+          Object.assign(State.nodes[nId], {
+            manualColor: s.manualColor,
+            deadline: s.deadline,
+            duration: s.duration,
+            waitHours: s.waitHours,
+            waitStartTime: s.waitStartTime,
+            isCollapsed: s.isCollapsed,
+            w: s.w,
+            manualMaxWidth: s.manualMaxWidth,
+            priority: 0, // 複製時はpriority引き継がない
+          });
+
+          if (s.manualMaxWidth) {
+            Renderer.getNodeEl(nId).querySelector(
+              ".node-input",
+            ).style.maxWidth = s.manualMaxWidth + "px";
+          }
+
+          this.setColor(nId, s.manualColor, false);
+
+          s.childrenIds.forEach((cId) => {
+            const c = State.nodes[cId];
+            this.duplicate(cId, nId, tx + (c.x - s.x), ty + (c.y - s.y));
+          });
+
+          return nId;
+        },
+
+        getDescendants(id) {
+          let d = [];
+          State.nodes[id].childrenIds.forEach((c) => {
+            d.push(c);
+            d = d.concat(this.getDescendants(c));
+          });
+          return d;
+        },
+
+        getAncestors(id) {
+          let a = [];
+          let cur = State.nodes[id].parentId;
+          while (cur) {
+            a.push(cur);
+            cur = State.nodes[cur] ? State.nodes[cur].parentId : null;
+          }
+          return a;
+        },
+
+        setColor(id, c, reset) {
+          const n = State.nodes[id];
+          n.manualColor = c;
+          n.color = c;
+
+          if (reset) {
+            n.deadline = "";
+            n.duration = 0;
+            n.waitHours = 0;
+            n.waitStartTime = null;
+            n.escalated = false;
+            n.effectiveStartTimeMs = undefined;
+            n.effectiveDeadlineMs = undefined;
+            if (State.selectedIds.has(id)) UIManager.updateMenu();
+          }
+
+          if (c === "blue" && n.priority > 0) {
+            this.setPriority(id, 0);
+            setTimeout(() => SidebarManager.update(), 0);
+          }
+
+          if (c === "red") {
+            // 赤色にすると自身および上流の優先順位が消える
+            let cur = n;
+            while (cur) {
+              if (cur.priority > 0) {
+                this.setPriority(cur.id, 0);
+              }
+              cur = cur.parentId ? State.nodes[cur.parentId] : null;
+            }
+            setTimeout(() => SidebarManager.update(), 0);
+          }
+
+          Renderer.updateNodeColor(id);
+          Renderer.updateLines();
+        },
+
+        _recalculateSubtreeBottomUp(rootId) {
+          if (!State.nodes[rootId]) return;
+          const desc = this.getDescendants(rootId).reverse();
+          desc.forEach((d) => this.recalculateColor(d));
+          this.recalculateColor(rootId);
+        },
+
+        /** 優先度を設定（挿入・移動＋自動コンパクト）*/
+        setPriority(id, p) {
+          const n = State.nodes[id];
+
+          // Rule 5: 青色のノードに優先順位はつけられない（解除は許可）
+          if (n.color === "blue" && p !== 0) return;
+
+          if (p === 0 || n.priority === p) {
+            // 解除
+            n.priority = 0;
+            if (n.manualColor === "purple") n.manualColor = "green";
+            this._recalculateSubtreeBottomUp(id);
+          } else {
+            // Rule 1: 上流の優先順位解除
+            let cur = State.nodes[n.parentId];
+            const changedAncestors = [];
+            while (cur) {
+              if (cur.priority > 0) {
+                cur.priority = 0;
+                if (cur.manualColor === "purple") cur.manualColor = "green";
+                changedAncestors.push(cur.id);
+              }
+              cur = State.nodes[cur.parentId];
+            }
+            changedAncestors.forEach((aId) =>
+              this._recalculateSubtreeBottomUp(aId),
+            );
+
+            const oldP = n.priority;
+
+            if (oldP > 0) {
+              // 既に優先順位がある場合（移動: 間を詰める・開ける）
+              if (p < oldP) {
+                for (const k in State.nodes) {
+                  if (
+                    k !== id &&
+                    State.nodes[k].priority >= p &&
+                    State.nodes[k].priority < oldP
+                  ) {
+                    State.nodes[k].priority++;
+                  }
+                }
+              } else if (p > oldP) {
+                for (const k in State.nodes) {
+                  if (
+                    k !== id &&
+                    State.nodes[k].priority > oldP &&
+                    State.nodes[k].priority <= p
+                  ) {
+                    State.nodes[k].priority--;
+                  }
+                }
+              }
+            } else {
+              // 新規で優先順位がつく場合（挿入: 挿入箇所以降を一つ下げる）
+              for (const k in State.nodes) {
+                if (
+                  k !== id &&
+                  State.nodes[k].priority >= p &&
+                  State.nodes[k].priority > 0
+                ) {
+                  State.nodes[k].priority++;
+                }
+              }
+            }
+
+            n.priority = p;
+            this.recalculateColor(id);
+          }
+
+          // 常に1から詰めて正規化（解除や変更でできた穴を埋める）
+          this._compactPriorities();
+          Renderer.updateAllPriorityBadges();
+          Renderer.updateLines();
+        },
+
+        /** 優先度を1から連番に詰め直す */
+        _compactPriorities() {
+          const sorted = Object.keys(State.nodes)
+            .filter((k) => State.nodes[k].priority > 0)
+            .sort((a, b) => State.nodes[a].priority - State.nodes[b].priority);
+          sorted.forEach((k, i) => {
+            State.nodes[k].priority = i + 1;
+          });
+        },
+
+        recalculateColor(id) {
+          if (!State.nodes[id]) return;
+
+          const n = State.nodes[id];
+          const cIds = n.childrenIds;
+          const now = new Date();
+
+          let nc = n.manualColor || "green";
+
+          if (cIds.length > 0) {
+            let hasP = false,
+              hasG = false,
+              hasR = false,
+              allB = true;
+            cIds.forEach((c) => {
+              const col = State.nodes[c].color;
+              if (col === "purple") hasP = true;
+              if (col === "green") hasG = true;
+              if (col === "red") hasR = true;
+              if (col !== "blue") allB = false;
+            });
+            nc = hasP
+              ? "purple"
+              : hasG
+                ? "green"
+                : hasR
+                  ? "red"
+                  : allB
+                    ? "blue"
+                    : "green";
+          }
+
+          if (nc === "blue") {
+            if (n.color !== nc) {
+              n.color = nc;
+              Renderer.updateNodeColor(id);
+              if (n.parentId) {
+                this.recalculateColor(n.parentId);
+              }
+            }
+            return;
+          }
+
+          let hasOverrideColor = null;
+          let cur = n;
+          while (cur) {
+            if (
+              cur.deadline &&
+              cur.effectiveStartTimeMs &&
+              now.getTime() >= cur.effectiveStartTimeMs
+            ) {
+              hasOverrideColor = "purple";
+              break;
+            }
+            if (cur.priority > 0) {
+              hasOverrideColor = "purple";
+              break;
+            }
+            if (cur.waitHours > 0 && cur.waitStartTime) {
+              const expiry = new Date(
+                new Date(cur.waitStartTime).getTime() + cur.waitHours * 3600000,
+              );
+              if (now < expiry) {
+                hasOverrideColor = "red";
+                break;
+              }
+            }
+            cur = cur.parentId ? State.nodes[cur.parentId] : null;
+          }
+
+          if (hasOverrideColor) {
+            if (n.color !== hasOverrideColor) {
+              n.color = hasOverrideColor;
+              Renderer.updateNodeColor(id);
+              if (n.parentId) this.recalculateColor(n.parentId);
+              n.childrenIds.forEach((c) => this.recalculateColor(c));
+            }
+            return;
+          }
+
+          if (n.color !== nc) {
+            n.color = nc;
+            Renderer.updateNodeColor(id);
+            if (n.parentId) {
+              this.recalculateColor(n.parentId);
+            }
+          }
+        },
+      };
+
+      const LayoutEngine = {
+        /** スケールと変形（transform-origin: 0 0）を考慮した実境界を返す */
+        _getScaledBounds(id) {
+          const n = State.nodes[id];
+          if (!n) return { l: 0, r: 0, t: 0, b: 0, w: 0, h: 0 };
+          const s = NodeManager.getScale(id);
+          const el = Renderer.getNodeEl(id);
+          const uw = el ? el.offsetWidth : n.w || CONFIG.layout.nodeBaseW;
+          const uh = el ? el.offsetHeight : n.h || CONFIG.layout.nodeBaseH;
+          const sw = uw * s;
+          const sh = uh * s;
+          return {
+            l: n.x,
+            r: n.x + sw,
+            t: n.y,
+            b: n.y + sh,
+            w: sw,
+            h: sh,
+          };
+        },
+
+        checkCollision(x, y) {
+          const r1 = {
+            l: x,
+            r: x + CONFIG.layout.nodeBaseW,
+            t: y,
+            b: y + CONFIG.layout.nodeBaseH,
+          };
+          for (const k in State.nodes) {
+            const n = State.nodes[k];
+            if (n.isHidden) continue;
+            const r2 = this._getScaledBounds(k);
+            if (!(r1.r < r2.l || r1.l > r2.r || r1.b < r2.t || r1.t > r2.b))
+              return true;
+          }
+          return false;
+        },
+
+        getSubtreeBox(id) {
+          const ids = [id, ...NodeManager.getDescendants(id)].filter(
+            (i) => !State.nodes[i].isHidden,
+          );
+          if (ids.length === 0) return { left: 0, right: 0, top: 0, bottom: 0 };
+
+          let l = Infinity,
+            r = -Infinity,
+            t = Infinity,
+            b = -Infinity;
+          ids.forEach((i) => {
+            const bounds = this._getScaledBounds(i);
+            if (bounds.l < l) l = bounds.l;
+            if (bounds.r > r) r = bounds.r;
+            if (bounds.t < t) t = bounds.t;
+            if (bounds.b > b) b = bounds.b;
+          });
+          return { left: l, right: r, top: t, bottom: b };
+        },
+
+        resolveCollisions(fixedIds = [], dragFocalInfo = null) {
+          Renderer.syncDataFromDOM();
+          const baseM = CONFIG.layout.collisionMargin;
+          let occur = true;
+          let loops = 0;
+
+          while (occur && loops < 20) {
+            occur = false;
+            loops++;
+            const sg = { root: [] };
+
+            for (const i in State.nodes) {
+              if (State.nodes[i].isHidden) continue;
+              const p = State.nodes[i].parentId;
+              if (p) {
+                if (!sg[p]) sg[p] = [];
+                sg[p].push(i);
+              } else {
+                sg["root"].push(i);
+              }
+            }
+
+            for (const p in sg) {
+              const sibs = sg[p];
+              if (sibs.length < 2) continue;
+              const sibScale = NodeManager.getScale(sibs[0]);
+              const m = baseM * sibScale;
+
+              sibs.sort((a, b) => {
+                let yA = State.nodes[a].y;
+                let yB = State.nodes[b].y;
+
+                if (dragFocalInfo) {
+                  if (a === dragFocalInfo.focalId) yA = dragFocalInfo.focalY;
+                  if (b === dragFocalInfo.focalId) yB = dragFocalInfo.focalY;
+                }
+
+                return yA - yB;
+              });
+
+              let anchorIdx = sibs.findIndex((id) =>
+                fixedIds.some(
+                  (f) => id === f || NodeManager.getDescendants(id).includes(f),
+                ),
+              );
+              if (anchorIdx === -1) anchorIdx = 0;
+
+              // 上へ押し上げる / 引き下げる (完全密着パック)
+              for (let i = anchorIdx - 1; i >= 0; i--) {
+                const bCurr = this.getSubtreeBox(sibs[i]);
+                const bBelow = this.getSubtreeBox(sibs[i + 1]);
+                if (
+                  !(
+                    bCurr.right + m < bBelow.left ||
+                    bCurr.left - m > bBelow.right
+                  )
+                ) {
+                  const overlap = bCurr.bottom + m - bBelow.top;
+                  if (Math.abs(overlap) > 0.5) {
+                    if (p === "root" && overlap < -0.5) continue; // Do not magnetically pull independent roots
+                    [sibs[i], ...NodeManager.getDescendants(sibs[i])].forEach(
+                      (n) => {
+                        State.nodes[n].y -= overlap;
+                        Renderer.updateNodePos(n);
+                      },
+                    );
+                    occur = true;
+                  }
+                }
+              }
+
+              // 下へ押し下げる / 引き上げる (完全密着パック)
+              for (let i = anchorIdx + 1; i < sibs.length; i++) {
+                const bCurr = this.getSubtreeBox(sibs[i]);
+                const bAbove = this.getSubtreeBox(sibs[i - 1]);
+                if (
+                  !(
+                    bCurr.right + m < bAbove.left ||
+                    bCurr.left - m > bAbove.right
+                  )
+                ) {
+                  const overlap = bAbove.bottom - (bCurr.top - m);
+                  if (Math.abs(overlap) > 0.5) {
+                    if (p === "root" && overlap < -0.5) continue; // Do not magnetically pull independent roots
+                    [sibs[i], ...NodeManager.getDescendants(sibs[i])].forEach(
+                      (n) => {
+                        State.nodes[n].y += overlap;
+                        Renderer.updateNodePos(n);
+                      },
+                    );
+                    occur = true;
+                  }
+                }
+              }
+            }
+          }
+          Renderer.updateLines();
+          UIManager.updateMenu();
+        },
+      };
+
+      const TimerManager = {
+        _calculateEffectiveDeadlines() {
+          const targets = [];
+          for (const id in State.nodes) {
+            const n = State.nodes[id];
+            if (n.deadline && n.color !== "blue") {
+              targets.push({
+                id,
+                deadlineMs: new Date(n.deadline).getTime(),
+                durationMs: (n.duration || 0) * 3600000,
+              });
+            }
+          }
+
+          targets.sort((a, b) => b.deadlineMs - a.deadlineMs);
+
+          let nextStartTime = Infinity;
+          for (let i = 0; i < targets.length; i++) {
+            const t = targets[i];
+            t.effectiveDeadlineMs = Math.min(t.deadlineMs, nextStartTime);
+            t.effectiveStartTimeMs = t.effectiveDeadlineMs - t.durationMs;
+            nextStartTime = Math.min(nextStartTime, t.effectiveStartTimeMs);
+
+            State.nodes[t.id].effectiveDeadlineMs = t.effectiveDeadlineMs;
+            State.nodes[t.id].effectiveStartTimeMs = t.effectiveStartTimeMs;
+          }
+        },
+
+        evaluateAll() {
+          const nowMs = Date.now();
+          let changed = false;
+
+          this._calculateEffectiveDeadlines();
+
+          for (let id in State.nodes) {
+            if (State.nodes[id].isHidden) continue;
+            const n = State.nodes[id];
+
+            if (n.color !== "blue") {
+              if (n.waitHours > 0 && n.waitStartTime) {
+                if (
+                  nowMs >=
+                  new Date(n.waitStartTime).getTime() + n.waitHours * 3600000
+                ) {
+                  n.waitHours = 0;
+                  n.waitStartTime = null;
+                  if (State.selectedIds.has(id)) UIManager.updateMenu();
+                  changed = true;
+                  NodeManager.setPriority(id, 1);
+                  setTimeout(() => SidebarManager.update(), 0);
+                } else if (
+                  State.selectedIds.has(id) &&
+                  State.selectedIds.size === 1 &&
+                  document.activeElement?.id !== "menu-waithours"
+                ) {
+                  const elapsedMs = nowMs - new Date(n.waitStartTime).getTime();
+                  const remainH =
+                    Math.max(0, n.waitHours * 3600000 - elapsedMs) / 3600000;
+                  document.getElementById("menu-waithours").value = Math.max(
+                    0.1,
+                    Math.ceil(remainH * 10) / 10,
+                  ).toFixed(1);
+                }
+              }
+              if (n.effectiveStartTimeMs && nowMs >= n.effectiveStartTimeMs) {
+                // 締切超過（重複回避のための前倒し考慮）で自動的に優先順位1に割り込み
+                if (!n.escalated && n.priority !== 1) {
+                  NodeManager.setPriority(id, 1);
+                  n.escalated = true;
+                  changed = true;
+                  setTimeout(() => SidebarManager.update(), 0);
+                }
+              }
+            }
+
+            Renderer.updateNodeTimerInfo(id);
+
+            const oldColor = n.color;
+            NodeManager.recalculateColor(id);
+            if (n.color !== oldColor) {
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            Renderer.updateLines();
+            HistoryManager.save();
+          }
+        },
+      };
+
+      const SearchManager = {
+        doSearch() {
+          const q = DOM.searchInput.value.toLowerCase();
+          document
+            .querySelectorAll(".node-box")
+            .forEach((e) => e.classList.remove("search-match", "search-focus"));
+
+          State.searchResults = [];
+          State.currentSearchIndex = -1;
+          DOM.searchCount.textContent = "0/0";
+
+          if (!q) return;
+
+          for (const i in State.nodes) {
+            if (State.nodes[i].isHidden) continue;
+            const el = Renderer.getNodeEl(i);
+            if (
+              el &&
+              el
+                .querySelector(".node-input")
+                .textContent.toLowerCase()
+                .includes(q)
+            ) {
+              State.searchResults.push(i);
+              el.classList.add("search-match");
+            }
+          }
+
+          if (State.searchResults.length > 0) {
+            State.currentSearchIndex = 0;
+            this.focusSearch();
+          }
+        },
+
+        focusSearch() {
+          if (State.searchResults.length === 0) return;
+
+          document
+            .querySelectorAll(".node-box")
+            .forEach((e) => e.classList.remove("search-focus"));
+          const id = State.searchResults[State.currentSearchIndex];
+          const n = State.nodes[id];
+          const el = Renderer.getNodeEl(id);
+
+          el.classList.add("search-focus");
+          DOM.searchCount.textContent = `${State.currentSearchIndex + 1}/${State.searchResults.length}`;
+
+          State.canvasX =
+            window.innerWidth / 2 -
+            (n.x + el.offsetWidth / 2) * State.canvasScale;
+          State.canvasY =
+            window.innerHeight / 2 -
+            (n.y + el.offsetHeight / 2) * State.canvasScale;
+          UIManager.updateTransform();
+        },
+
+        closeSearch() {
+          DOM.searchBar.classList.remove("show");
+          DOM.searchInput.value = "";
+          this.doSearch();
+          if (document.activeElement) document.activeElement.blur();
+        },
+      };
+
+      // ==========================================
+      // 7. クリップボード (ClipboardManager)
+      // ==========================================
+      const ClipboardManager = {
+        /** 選択ノード群を Markdown 箇条書きに変換（ノード内改行対応） */
+        nodesToMarkdown(ids) {
+          const roots = ids.filter((id) => {
+            let p = State.nodes[id]?.parentId;
+            while (p) {
+              if (ids.includes(p)) return false;
+              p = State.nodes[p]?.parentId;
+            }
+            return true;
+          });
+
+          const parseHtmlToTextLines = (htmlStr) => {
+            const temp = document.createElement("div");
+            temp.innerHTML = htmlStr;
+            const result = [];
+
+            const walkDOM = (el, listDepth) => {
+              Array.from(el.childNodes).forEach((child) => {
+                if (child.nodeType === 3) {
+                  const t = child.textContent;
+                  if (t) {
+                    if (result.length === 0) result.push("");
+                    result[result.length - 1] += t;
+                  }
+                } else if (child.nodeName === "BR") {
+                  result.push("");
+                } else if (child.nodeName === "DIV" || child.nodeName === "P") {
+                  if (result.length > 0 && result[result.length - 1] !== "")
+                    result.push("");
+                  walkDOM(child, listDepth);
+                } else if (child.nodeName === "UL" || child.nodeName === "OL") {
+                  walkDOM(child, listDepth + 1);
+                } else if (child.nodeName === "LI") {
+                  if (result.length > 0 && result[result.length - 1] !== "")
+                    result.push("");
+                  if (result.length === 0) result.push("");
+                  // Markdown互換性優先：半角スペース2つで字下げ
+                  const depthIndent =
+                    listDepth > 0 ? "  ".repeat(listDepth) : "  ";
+                  result[result.length - 1] += depthIndent + "- ";
+                  walkDOM(child, listDepth);
+                } else {
+                  walkDOM(child, listDepth);
+                }
+              });
+            };
+            walkDOM(temp, 0);
+            return result.filter((r) => r.trim() !== "");
+          };
+
+          const lines = [];
+          const walk = (id, depth) => {
+            const n = State.nodes[id];
+            const indentStr = "  ".repeat(depth);
+
+            // 単純な .innerText ではなく、内部の <ul><li> や <div> を加味して
+            // 字下げとリストマーカー付きのテキスト配列に変換
+            const textLines = parseHtmlToTextLines(n.html || "タスク");
+
+            let firstLineWritten = false;
+            textLines.forEach((line) => {
+              const trimmed = line.trim();
+              if (!trimmed) return;
+
+              // その行が既に箇条書きマーカー（全角スペースやハイフン）を持っているか判定
+              // (\s に \u3000 も含まれるため以前のペーストデータとの互換として残す)
+              const hasListMarker = /^[\s\u3000]*[-*+]\s/.test(line);
+
+              if (!firstLineWritten) {
+                if (hasListMarker) {
+                  // 既にマーカーがある場合（例: ノードの先頭からリストの場合）、重複を避けるために除去
+                  const cleanText = line
+                    .replace(/^[\s\u3000]*[-*+]\s+/, "")
+                    .trim();
+                  lines.push(indentStr + "- " + cleanText);
+                } else {
+                  lines.push(indentStr + "- " + trimmed);
+                }
+                firstLineWritten = true;
+              } else {
+                if (hasListMarker) {
+                  // ノード内の箇条書き要素のインデントはそのまま維持する
+                  lines.push(indentStr + line);
+                } else {
+                  // 続き行は標準Markdownの半角スペース2つで字下げ
+                  lines.push(indentStr + "  " + trimmed);
+                }
+              }
+            });
+
+            State.nodes[id].childrenIds.forEach((c) => {
+              if (!State.nodes[c].isHidden) walk(c, depth + 1);
+            });
+          };
+          roots.forEach((r) => walk(r, 0));
+          return lines.join("\n").replace(/\n{2,}/g, "\n");
+        },
+
+        /** Markdown インデントのテキストをノードツリーに変換（ノード内改行対応） */
+        markdownToNodes(text, parentId, baseX, baseY) {
+          // CRLF正規化 + 行分割
+          const lines = text
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n")
+            .split("\n");
+          // スタック: { id, depth }
+          const stack = [{ id: parentId, depth: -1 }];
+          let yOffset = 0;
+          const createdIds = [];
+          let lastCreatedId = null; // 直前に作成したノードID（続き行の結合先）
+
+          for (const raw of lines) {
+            // 空行はスキップ
+            if (raw.trim() === "") continue;
+
+            // 「続き行」の判定:
+            // リストマーカー (-, *, +) が行頭にない → 直前ノードへの続き行として結合
+            // 全角スペース（U+3000）はリストマーカーにならないため !hasMarker に包含される
+            const hasMarker = /^\s*[-*+]\s/.test(raw);
+
+            if (lastCreatedId !== null && !hasMarker) {
+              // 続き行: 直前ノードの html に <div> 改行で追記
+              const contText = raw.replace(/^[\s\u3000]+/, "").trim();
+              if (!contText) continue;
+              const n = State.nodes[lastCreatedId];
+              n.html = n.html + "<div>" + contText + "</div>";
+              const el = Renderer.getNodeEl(lastCreatedId);
+              if (el) el.querySelector(".node-input").innerHTML = n.html;
+              continue;
+            }
+
+            // 新規ノード行: タブを2スペースに正規化してインデント深度を計算
+            const normalized = raw.replace(/\t/g, "  ");
+            const indentMatch = normalized.match(/^(\s*)/);
+            const indent = indentMatch ? indentMatch[1].length : 0;
+            const depth = Math.floor(indent / 2);
+
+            // リストマーカーを除去
+            const nodeText = raw.replace(/^\s*[-*+]\s*/, "").trim();
+            if (!nodeText) continue;
+
+            // スタックを調整して親を特定
+            while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
+              stack.pop();
+            }
+            const pId = stack[stack.length - 1].id;
+
+            let px, py;
+            if (pId && State.nodes[pId]) {
+              const pN = State.nodes[pId];
+              px =
+                LayoutEngine._getScaledBounds(pId).r +
+                CONFIG.layout.marginX * NodeManager.getScale(pId);
+              py = pN.y + yOffset;
+            } else {
+              px = baseX;
+              py = baseY + yOffset;
+            }
+
+            const nId = NodeManager.create(px, py, pId, nodeText, false);
+            createdIds.push(nId);
+            lastCreatedId = nId;
+            stack.push({ id: nId, depth });
+            yOffset +=
+              CONFIG.layout.siblingYOffset *
+              (pId ? NodeManager.getScale(pId) : 1);
+          }
+          return createdIds;
+        },
+      };
+
+      // ==========================================
+      // 8. ファイル I/O (FileManager)
+      // ==========================================
+      const FileManager = {
+        _fileHandle: null,
+
+        getExportData() {
+          Renderer.syncDataFromDOM();
+          return JSON.stringify(
+            { counter: State.counter, nodes: State.nodes },
+            null,
+            2,
+          );
+        },
+
+        async saveAs() {
+          const data = this.getExportData();
+          if (window.showSaveFilePicker) {
+            try {
+              this._fileHandle = await window.showSaveFilePicker({
+                suggestedName: "task-tree.json",
+                types: [
+                  {
+                    description: "JSON ファイル",
+                    accept: { "application/json": [".json"] },
+                  },
+                ],
+              });
+              await this._writeToHandle(this._fileHandle, data);
+              UIManager.showToast("💾 保存しました");
+            } catch (e) {
+              if (e.name !== "AbortError") {
+                this._fallbackSave(data);
+              }
+            }
+          } else {
+            this._fallbackSave(data);
+          }
+        },
+
+        async save() {
+          if (this._fileHandle) {
+            try {
+              const data = this.getExportData();
+              await this._writeToHandle(this._fileHandle, data);
+              UIManager.showToast("💾 上書き保存しました");
+            } catch (e) {
+              await this.saveAs();
+            }
+          } else {
+            await this.saveAs();
+          }
+        },
+
+        async _writeToHandle(handle, data) {
+          const writable = await handle.createWritable();
+          await writable.write(data);
+          await writable.close();
+        },
+
+        _fallbackSave(data) {
+          const blob = new Blob([data], { type: "application/json" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "task-tree.json";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+          UIManager.showToast("💾 ダウンロードしました");
+        },
+
+        /** JSON をパースして現在のツリーにマージインポート */
+        importJSON(json, options = {}) {
+          try {
+            const data = JSON.parse(json);
+            if (!data.nodes || typeof data.nodes !== "object") {
+              UIManager.showToast("⚠️ 無効なファイル形式です");
+              return false;
+            }
+
+            const idMap = {};
+            for (const oldId in data.nodes) {
+              idMap[oldId] = "node_" + State.counter++;
+            }
+
+            // 現状の優先順位の最大値を求める
+            let maxExistingPriority = 0;
+            for (const id in State.nodes) {
+              const p = State.nodes[id].priority;
+              if (p && p > maxExistingPriority) {
+                maxExistingPriority = p;
+              }
+            }
+
+            for (const oldId in data.nodes) {
+              const n = data.nodes[oldId];
+              const newId = idMap[oldId];
+              State.nodes[newId] = {
+                ...n,
+                id: newId,
+                parentId: n.parentId ? idMap[n.parentId] || null : null,
+                childrenIds: (n.childrenIds || [])
+                  .map((c) => idMap[c])
+                  .filter(Boolean),
+                // 既存の優先順位に被らないように繰り上げる
+                priority: n.priority ? n.priority + maxExistingPriority : 0,
+              };
+            }
+
+            let minX = Infinity,
+              minY = Infinity;
+            const importedRoots = [];
+            for (const oldId in data.nodes) {
+              if (!data.nodes[oldId].parentId) {
+                importedRoots.push(idMap[oldId]);
+                if (
+                  typeof data.nodes[oldId].x === "number" &&
+                  data.nodes[oldId].x < minX
+                )
+                  minX = data.nodes[oldId].x;
+                if (
+                  typeof data.nodes[oldId].y === "number" &&
+                  data.nodes[oldId].y < minY
+                )
+                  minY = data.nodes[oldId].y;
+              }
+            }
+
+            let dx = 0,
+              dy = 0;
+            if (options.targetParentId && State.nodes[options.targetParentId]) {
+              const pN = State.nodes[options.targetParentId];
+              const baseX = typeof pN.x === "number" ? pN.x : 0;
+              const baseY = typeof pN.y === "number" ? pN.y : 0;
+              dx =
+                LayoutEngine._getScaledBounds(options.targetParentId).r +
+                CONFIG.layout.marginX *
+                  NodeManager.getScale(options.targetParentId) -
+                (minX === Infinity ? 0 : minX);
+              dy = baseY - (minY === Infinity ? 0 : minY);
+              importedRoots.forEach((rId) => {
+                State.nodes[rId].parentId = options.targetParentId;
+                if (
+                  !State.nodes[options.targetParentId].childrenIds.includes(rId)
+                ) {
+                  State.nodes[options.targetParentId].childrenIds.push(rId);
+                }
+              });
+              State.nodes[options.targetParentId].isCollapsed = false;
+              Renderer.getNodeEl(options.targetParentId)?.classList.remove(
+                "is-leaf",
+              );
+              NodeManager.recalculateColor(options.targetParentId);
+            } else if (
+              options.dropX !== undefined &&
+              options.dropY !== undefined
+            ) {
+              dx =
+                (Number(options.dropX) || 0) - (minX === Infinity ? 0 : minX);
+              dy =
+                (Number(options.dropY) || 0) - (minY === Infinity ? 0 : minY);
+              State.rootIds.push(...importedRoots);
+            } else {
+              State.rootIds.push(...importedRoots);
+            }
+
+            // NaNやInfinityを防止
+            if (!Number.isFinite(dx)) dx = 0;
+            if (!Number.isFinite(dy)) dy = 0;
+
+            if (dx !== 0 || dy !== 0) {
+              for (const oldId in data.nodes) {
+                const newId = idMap[oldId];
+                State.nodes[newId].x =
+                  (typeof State.nodes[newId].x === "number"
+                    ? State.nodes[newId].x
+                    : 0) + dx;
+                State.nodes[newId].y =
+                  (typeof State.nodes[newId].y === "number"
+                    ? State.nodes[newId].y
+                    : 0) + dy;
+              }
+            }
+
+            Renderer.rebuildAll();
+            HistoryManager.save();
+            UIManager.showToast("📂 インポート完了しました");
+            return true;
+          } catch (e) {
+            UIManager.showToast("⚠️ ファイルの読み込みに失敗しました");
+            return false;
+          }
+        },
+      };
+
+      const SidebarManager = {
+        update() {
+          const listEl = document.getElementById("priority-sidebar-list");
+          const countEl = document.getElementById("priority-sidebar-count");
+          if (!listEl || !countEl) return;
+
+          // 優先度バッジが設定されているノードを抽出
+          const pNodes = [];
+          for (const id in State.nodes) {
+            const n = State.nodes[id];
+            if (n.priority && n.priority > 0) {
+              pNodes.push(n);
+            }
+          }
+
+          // 優先度の数字の若い順（昇順）にソート
+          pNodes.sort((a, b) => a.priority - b.priority);
+
+          countEl.textContent = pNodes.length;
+          listEl.innerHTML = "";
+
+          pNodes.forEach((n) => {
+            const item = document.createElement("div");
+            item.className = "sidebar-item";
+            if (n.color && n.color !== "none" && CONFIG.colors[n.color]) {
+              item.style.borderColor = CONFIG.colors[n.color];
+            }
+            item.innerHTML = `
+                        <div class="priority-badge">${n.priority}</div>
+                        <div class="node-content-static">${n.html}</div>
+                    `;
+            item.addEventListener("click", () => {
+              UIManager.selectOnly(n.id);
+              CameraManager.jumpTo(n.id);
+              setTimeout(() => {
+                const el = Renderer.getNodeEl(n.id);
+                if (el) UIManager.focusToEnd(el.querySelector(".node-input"));
+              }, 50);
+            });
+            listEl.appendChild(item);
+          });
+        },
+      };
+
+      // ==========================================
+      // 9. イベント委譲・インタラクション (EventManager)
+      // ==========================================
+      function setupEvents() {
+        let startPanX = 0,
+          startPanY = 0,
+          startCanvasX = 0,
+          startCanvasY = 0;
+        let isPanning = false,
+          isBoxSelecting = false,
+          boxStartX = 0,
+          boxStartY = 0;
+        let boxInitialSelectedIds = new Set();
+        let isRightDragZooming = false,
+          rightDragStartX = 0,
+          rightDragStartY = 0,
+          rightDragStartScale = 1;
+        let activeNodeInitialHtml = "";
+
+        document.addEventListener("focusin", (e) => {
+          if (e.target.classList.contains("node-input")) {
+            activeNodeInitialHtml = e.target.innerHTML;
+          }
+        });
+
+        // ==================== キャンバス操作 ====================
+        window.addEventListener("mousedown", (e) => {
+          // カメラアニメーションをキャンセル（ユーザー操作優先）
+          CameraManager.cancel();
+
+          if (
+            e.button !== 1 &&
+            e.button !== 2 &&
+            (e.target.closest(".node-input") ||
+              e.target.closest("#floating-menu") ||
+              e.target.closest("#search-bar"))
+          )
+            return;
+
+          if ((e.button === 1 && e.altKey) || (e.button === 2 && !e.shiftKey)) {
+            // Alt+中ドラッグ または 右クリックドラッグ → ズーム
+            if (!e.target.closest("#viewport")) return;
+            e.preventDefault();
+            isRightDragZooming = true;
+            rightDragStartX = e.clientX;
+            rightDragStartY = e.clientY;
+            rightDragStartScale = State.canvasScale;
+            DOM.viewport.style.cursor = "ns-resize";
+          } else if (e.button === 1 || (e.button === 2 && e.shiftKey)) {
+            // 中ボタン（Altなし） または Shift+右クリック → パン
+            e.preventDefault();
+            isPanning = true;
+            startPanX = e.clientX;
+            startPanY = e.clientY;
+            startCanvasX = State.canvasX;
+            startCanvasY = State.canvasY;
+            DOM.viewport.style.cursor = "grabbing";
+          } else if (
+            e.button === 0 &&
+            (e.target === DOM.viewport ||
+              e.target === DOM.canvasContainer ||
+              e.target === DOM.svgLayer)
+          ) {
+            e.preventDefault();
+            isBoxSelecting = true;
+            boxStartX = e.clientX;
+            boxStartY = e.clientY;
+
+            DOM.selectionBox.style.left = boxStartX + "px";
+            DOM.selectionBox.style.top = boxStartY + "px";
+            DOM.selectionBox.style.width = "0px";
+            DOM.selectionBox.style.height = "0px";
+            DOM.selectionBox.style.display = "block";
+
+            DOM.selectionBox.style.display = "block";
+
+            boxInitialSelectedIds = new Set(State.selectedIds);
+            if (!e.shiftKey && !e.altKey) UIManager.selectOnly(null);
+          }
+        });
+
+        window.addEventListener("mousemove", (e) => {
+          if (isPanning) {
+            State.canvasX = startCanvasX + (e.clientX - startPanX);
+            State.canvasY = startCanvasY + (e.clientY - startPanY);
+            UIManager.updateTransform();
+          } else if (isRightDragZooming) {
+            const dy = e.clientY - rightDragStartY;
+            // 線形計算(1 - dy * X)から指数計算(Math.exp)に変更。これによりズームインとズームアウトの体感速度が完全に対称になります。
+            let ns = rightDragStartScale * Math.exp(-dy * 0.005);
+            ns = Math.max(0.005, Math.min(ns, 50));
+            // ズームの中心を右ドラッグ開始時のマウス座標に固定
+            const cx = rightDragStartX;
+            const cy = rightDragStartY;
+            State.canvasX =
+              cx - (cx - State.canvasX) * (ns / State.canvasScale);
+            State.canvasY =
+              cy - (cy - State.canvasY) * (ns / State.canvasScale);
+            State.canvasScale = ns;
+            UIManager.updateTransform();
+          } else if (isBoxSelecting) {
+            const l = Math.min(boxStartX, e.clientX);
+            const t = Math.min(boxStartY, e.clientY);
+            const w = Math.abs(e.clientX - boxStartX);
+            const h = Math.abs(e.clientY - boxStartY);
+
+            DOM.selectionBox.style.left = l + "px";
+            DOM.selectionBox.style.top = t + "px";
+            DOM.selectionBox.style.width = w + "px";
+            DOM.selectionBox.style.height = h + "px";
+
+            const bL = (l - State.canvasX) / State.canvasScale;
+            const bT = (t - State.canvasY) / State.canvasScale;
+            const bR = bL + w / State.canvasScale;
+            const bB = bT + h / State.canvasScale;
+
+            for (let id in State.nodes) {
+              const n = State.nodes[id];
+              if (n.isHidden) continue;
+
+              const bnds = LayoutEngine._getScaledBounds(id);
+              const inBox =
+                bR > bnds.l && bL < bnds.r && bB > bnds.t && bT < bnds.b;
+              let shouldBeSelected = inBox;
+
+              if (e.altKey) {
+                shouldBeSelected = boxInitialSelectedIds.has(id) && !inBox;
+              } else if (e.shiftKey) {
+                shouldBeSelected = boxInitialSelectedIds.has(id) || inBox;
+              }
+
+              if (shouldBeSelected) {
+                State.selectedIds.add(id);
+                Renderer.getNodeEl(id).classList.add("selected");
+              } else {
+                State.selectedIds.delete(id);
+                Renderer.getNodeEl(id).classList.remove("selected");
+              }
+            }
+          }
+        });
+
+        window.addEventListener("mouseup", () => {
+          if (isPanning) {
+            isPanning = false;
+            DOM.viewport.style.cursor = "default";
+          }
+          if (isRightDragZooming) {
+            isRightDragZooming = false;
+            DOM.viewport.style.cursor = "default";
+          }
+          if (isBoxSelecting) {
+            isBoxSelecting = false;
+            DOM.selectionBox.style.display = "none";
+            UIManager.updateMenu();
+          }
+        });
+
+        // 右クリックのコンテキストメニュー制御
+        // #viewport 内のみ無効化、Shift+右クリックはエスケープハッチとして許可
+        DOM.viewport.addEventListener("contextmenu", (e) => {
+          if (!e.shiftKey) e.preventDefault();
+        });
+
+        // ホイールズーム（カメラアニメを先にキャンセル）
+        DOM.viewport.addEventListener(
+          "wheel",
+          (e) => {
+            CameraManager.cancel();
+            e.preventDefault();
+            let ns = State.canvasScale * (1 - e.deltaY * 0.001);
+            ns = Math.max(0.005, Math.min(ns, 50));
+
+            const r = DOM.viewport.getBoundingClientRect();
+            const mx = e.clientX - r.left;
+            const my = e.clientY - r.top;
+
+            State.canvasX =
+              mx - (mx - State.canvasX) * (ns / State.canvasScale);
+            State.canvasY =
+              my - (my - State.canvasY) * (ns / State.canvasScale);
+            State.canvasScale = ns;
+            UIManager.updateTransform();
+          },
+          { passive: false },
+        );
+
+        // ファイル D&D インポート
+        DOM.viewport.addEventListener("dragover", (e) => {
+          if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        });
+        DOM.viewport.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const file = e.dataTransfer.files[0];
+          if (
+            file &&
+            (file.type === "application/json" || file.name.endsWith(".json"))
+          ) {
+            const rect = DOM.viewport.getBoundingClientRect();
+            const dropX =
+              (e.clientX - rect.left - State.canvasX) / State.canvasScale;
+            const dropY =
+              (e.clientY - rect.top - State.canvasY) / State.canvasScale;
+
+            const el = e.target.closest(".node-box");
+            const targetId = el ? el.id : Array.from(State.selectedIds)[0];
+
+            file.text().then((text) =>
+              FileManager.importJSON(text, {
+                dropX,
+                dropY,
+                targetParentId: targetId,
+              }),
+            );
+          }
+        });
+
+        // ==================== ペースト時のサニタイズ処理 ====================
+        DOM.canvasContainer.addEventListener("paste", (e) => {
+          const input = e.target.closest(".node-input");
+          if (!input) return;
+
+          e.preventDefault();
+          const html = (e.clipboardData || window.clipboardData).getData(
+            "text/html",
+          );
+          const text = (e.clipboardData || window.clipboardData).getData(
+            "text/plain",
+          );
+
+          if (html && !State.isShiftDown) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            // SPAN を含めることでハイライト（hiliteColor）・外部の装飾 span を保持
+            const allowedTags = [
+              "B",
+              "STRONG",
+              "EM",
+              "I",
+              "U",
+              "S",
+              "SPAN",
+              "UL",
+              "OL",
+              "LI",
+              "BR",
+              "DIV",
+              "P",
+              "A",
+            ];
+            // コピーを許可する CSS プロパティ（XSS に繋がるプロパティは除外）
+            const allowedStyles = [
+              "font-weight",
+              "font-style",
+              "text-decoration",
+              "color",
+              "background-color",
+            ];
+
+            const fragment = document.createDocumentFragment();
+
+            const walk = (node, parent) => {
+              node.childNodes.forEach((child) => {
+                if (child.nodeType === 3) {
+                  parent.appendChild(
+                    document.createTextNode(child.textContent),
+                  );
+                } else if (child.nodeType === 1) {
+                  const tag = child.tagName.toUpperCase();
+                  if (allowedTags.includes(tag)) {
+                    const newEl = document.createElement(tag);
+                    if (tag === "A") {
+                      const href = child.getAttribute("href");
+                      if (href) newEl.setAttribute("href", href);
+                      newEl.setAttribute("target", "_blank");
+                      newEl.setAttribute("rel", "noopener noreferrer");
+                    }
+                    // 許可プロパティのみ style をコピー
+                    if (child.style) {
+                      allowedStyles.forEach((prop) => {
+                        const val = child.style.getPropertyValue(prop);
+                        if (val) newEl.style.setProperty(prop, val);
+                      });
+                    }
+                    parent.appendChild(newEl);
+                    walk(child, newEl);
+                  } else {
+                    walk(child, parent);
+                  }
+                }
+              });
+            };
+
+            walk(doc.body, fragment);
+
+            // 単一のpやdivでのラップを解除して不要な改行を防ぐ
+            Array.from(fragment.children).forEach((el) => {
+              if (
+                (el.tagName === "DIV" || el.tagName === "P") &&
+                !el.getAttribute("style") &&
+                fragment.children.length === 1
+              ) {
+                while (el.firstChild) fragment.insertBefore(el.firstChild, el);
+                fragment.removeChild(el);
+              }
+            });
+
+            const tempDiv = document.createElement("div");
+            tempDiv.appendChild(fragment);
+
+            let finalHTML = tempDiv.innerHTML;
+            finalHTML = finalHTML.replace(/^(<br\s*\/?>|\s)+/i, "");
+            finalHTML = finalHTML.replace(/(<br\s*\/?>|\s)+$/i, "");
+
+            document.execCommand("insertHTML", false, finalHTML);
+          } else {
+            const urlRegex = /(https?:\/\/[^\s<]+)/g;
+            if (urlRegex.test(text)) {
+              const linkedHtml = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(
+                  urlRegex,
+                  '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>',
+                )
+                .replace(/\n/g, "<br>");
+              document.execCommand("insertHTML", false, linkedHtml);
+            } else {
+              document.execCommand("insertText", false, text);
+            }
+          }
+          HistoryManager.save();
+        });
+
+        // ==================== ノード幅のリサイズ処理 ====================
+        DOM.canvasContainer.addEventListener("mousedown", (e) => {
+          const isRight = e.target.classList.contains("resize-edge-right");
+          if (!isRight || e.button !== 0) return;
+
+          e.stopPropagation();
+          const el = e.target.closest(".node-box");
+          const id = el.id;
+          const input = el.querySelector(".node-input");
+          let sx = e.clientX;
+
+          const isMin = el.classList.contains("minimized");
+          let startMaxWidth = isMin
+            ? State.nodes[id].minimizedMaxWidth || 60
+            : State.nodes[id].manualMaxWidth;
+          if (!startMaxWidth && !isMin) {
+            const computedMax = window.getComputedStyle(input).maxWidth;
+            startMaxWidth =
+              computedMax && computedMax !== "none"
+                ? parseFloat(computedMax)
+                : input.offsetWidth;
+          }
+          const startBounds = LayoutEngine._getScaledBounds(id);
+
+          const move = (me) => {
+            const dx =
+              (me.clientX - sx) /
+              (State.canvasScale * NodeManager.getScale(id));
+            const newMaxWidth = Math.max(isMin ? 30 : 60, startMaxWidth + dx);
+
+            if (isMin) {
+              State.nodes[id].minimizedMaxWidth = newMaxWidth;
+            } else {
+              State.nodes[id].manualMaxWidth = newMaxWidth;
+            }
+            input.style.maxWidth = newMaxWidth + "px";
+
+            State.nodes[id].w = el.offsetWidth;
+            State.nodes[id].h = el.offsetHeight;
+
+            Renderer.updateNodePos(id);
+            Renderer.updateLines();
+            UIManager.updateMenu();
+          };
+
+          const up = () => {
+            document.removeEventListener("mousemove", move);
+            document.removeEventListener("mouseup", up);
+            Renderer.syncDataFromDOM();
+
+            const endBounds = LayoutEngine._getScaledBounds(id);
+            const deltaR = endBounds.r - startBounds.r;
+
+            // サイズが短くなった場合、子孫ノード達を同じだけ左に詰める
+            if (deltaR < -1) {
+              const descendants = NodeManager.getDescendants(id);
+              descendants.forEach((dId) => {
+                State.nodes[dId].x += deltaR;
+                Renderer.updateNodePos(dId);
+              });
+            }
+
+            // --- 右方向へのX軸衝突解決 ---
+            let loops = 0;
+            let occur = true;
+            const marginX = CONFIG.layout.marginX || 80;
+
+            while (occur && loops < 15) {
+              occur = false;
+              loops++;
+
+              const vis = Object.keys(State.nodes).filter(
+                (k) => !State.nodes[k].isHidden,
+              );
+              vis.sort((a, b) => State.nodes[a].x - State.nodes[b].x);
+
+              for (let i = 0; i < vis.length; i++) {
+                for (let j = i + 1; j < vis.length; j++) {
+                  const nA = vis[i];
+                  const nB = vis[j];
+
+                  const bA = LayoutEngine._getScaledBounds(nA);
+                  const bB = LayoutEngine._getScaledBounds(nB);
+
+                  const mY =
+                    (CONFIG.layout.collisionMargin * NodeManager.getScale(nA)) /
+                    2;
+                  if (bA.b + mY > bB.t && bA.t - mY < bB.b) {
+                    const mX = marginX * NodeManager.getScale(nA);
+                    if (bA.r + mX > bB.l && bB.l > bA.l + 10) {
+                      const overlap = bA.r + mX - bB.l;
+                      const pushList = [nB, ...NodeManager.getDescendants(nB)];
+                      const moved = new Set();
+                      pushList.forEach((pId) => {
+                        if (!moved.has(pId)) {
+                          State.nodes[pId].x += overlap;
+                          Renderer.updateNodePos(pId);
+                          moved.add(pId);
+                        }
+                      });
+                      occur = true;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (loops > 1) {
+              LayoutEngine.resolveCollisions();
+            }
+
+            HistoryManager.save();
+          };
+
+          document.addEventListener("mousemove", move);
+          document.addEventListener("mouseup", up);
+        });
+
+        // ==================== ドラッグ＆ドロップとクリック編集 ====================
+        DOM.canvasContainer.addEventListener("mousedown", (e) => {
+          const el = e.target.closest(".node-box");
+          if (!el) return;
+
+          const id = el.id;
+          const n = State.nodes[id];
+
+          if (
+            e.target.tagName === "BUTTON" ||
+            e.target.classList.contains("resize-edge-right")
+          ) {
+            e.stopPropagation();
+            return;
+          }
+
+          if (e.button === 0) {
+            // テキスト編集中は内部要素でのドラッグをテキスト選択として許可
+            const inputEl =
+              Renderer.getNodeEl(id)?.querySelector(".node-input");
+            if (
+              e.target.closest(".node-input") &&
+              document.activeElement === inputEl
+            ) {
+              return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            let isMoved = false,
+              isCloned = false,
+              targetDropId = null;
+            let actId = id;
+            const isAlt = e.altKey;
+
+            if (e.shiftKey) {
+              // Shift+クリック: 選択リストへの追加 (ONLY ADD)
+              State.selectedIds.add(id);
+              Renderer.getNodeEl(id)?.classList.add("selected");
+              UIManager.updateMenu();
+              return; // ドラッグ処理には入らない
+            } else if (!isAlt && !State.selectedIds.has(id)) {
+              UIManager.selectOnly(id);
+            }
+            if (isAlt && !State.selectedIds.has(id)) {
+              // Alt で未選択ならとりあえず選択して（後で解除するかもしれないがドラッグの基準になる）
+              UIManager.selectOnly(id);
+            }
+
+            const baseGroup = State.selectedIds.has(id)
+              ? Array.from(State.selectedIds)
+              : [id];
+            const extendedGroup = new Set();
+            baseGroup.forEach((nodeId) => {
+              extendedGroup.add(nodeId);
+              NodeManager.getDescendants(nodeId).forEach((descId) =>
+                extendedGroup.add(descId),
+              );
+            });
+
+            const group = Array.from(extendedGroup);
+            const initPos = {};
+
+            group.forEach((i) => {
+              if (State.nodes[i]) {
+                initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
+                const targetEl = Renderer.getNodeEl(i);
+                if (targetEl) targetEl.style.zIndex = 3;
+              }
+            });
+
+            let edgeScrollRAF = null;
+            let lastMouseX = e.clientX;
+            let lastMouseY = e.clientY;
+
+            let startWorldX = (e.clientX - State.canvasX) / State.canvasScale;
+            let startWorldY = (e.clientY - State.canvasY) / State.canvasScale;
+
+            const move = (me) => {
+              lastMouseX = me.clientX;
+              lastMouseY = me.clientY;
+
+              const currentWorldX =
+                (me.clientX - State.canvasX) / State.canvasScale;
+              const currentWorldY =
+                (me.clientY - State.canvasY) / State.canvasScale;
+
+              const dx = currentWorldX - startWorldX;
+              const dy = currentWorldY - startWorldY;
+
+              if (
+                Math.abs(dx * State.canvasScale) > 3 ||
+                Math.abs(dy * State.canvasScale) > 3
+              ) {
+                isMoved = true;
+              }
+
+              if (isAlt && isMoved && !isCloned) {
+                // カーソルがノードから出たら複製
+                const rect = Renderer.getNodeEl(actId)?.getBoundingClientRect();
+                if (
+                  rect &&
+                  (me.clientX < rect.left ||
+                    me.clientX > rect.right ||
+                    me.clientY < rect.top ||
+                    me.clientY > rect.bottom)
+                ) {
+                  const selectedRootsForClone = Array.from(
+                    State.selectedIds,
+                  ).filter((sid) => {
+                    let p = State.nodes[sid]?.parentId;
+                    while (p) {
+                      if (State.selectedIds.has(p)) return false;
+                      p = State.nodes[p]?.parentId;
+                    }
+                    return true;
+                  });
+                  const clonesRoots = selectedRootsForClone.includes(id)
+                    ? selectedRootsForClone
+                    : [id];
+                  const clonedIds = [];
+                  clonesRoots.forEach((srcId) => {
+                    const srcN = State.nodes[srcId];
+                    const cId = NodeManager.duplicate(
+                      srcId,
+                      srcN.parentId,
+                      srcN.x,
+                      srcN.y,
+                    );
+                    if (cId) clonedIds.push(cId);
+                  });
+                  // 複製されたノードを選択
+                  actId = clonedIds[0] || id;
+                  State.selectedIds.forEach((sid) =>
+                    Renderer.getNodeEl(sid)?.classList.remove("selected"),
+                  );
+                  State.selectedIds.clear();
+                  clonedIds.forEach((cId) => {
+                    State.selectedIds.add(cId);
+                    Renderer.getNodeEl(cId)?.classList.add("selected");
+                  });
+                  Renderer.updateVisibility();
+                  isCloned = true;
+
+                  // 新しいグループに入れ替えてポインタズレを修正
+                  group.length = 0;
+                  clonedIds.forEach((cId) => {
+                    group.push(cId);
+                    NodeManager.getDescendants(cId).forEach((d) =>
+                      group.push(d),
+                    );
+                  });
+                  group.forEach((i) => {
+                    if (State.nodes[i]) {
+                      initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
+                      const targetEl = Renderer.getNodeEl(i);
+                      if (targetEl) targetEl.style.zIndex = 3;
+                    }
+                  });
+                  // 基準位置をリセット
+                  e.clientX = me.clientX;
+                  e.clientY = me.clientY;
+                  startWorldX =
+                    (me.clientX - State.canvasX) / State.canvasScale;
+                  startWorldY =
+                    (me.clientY - State.canvasY) / State.canvasScale;
+                  return; // 次の move から適用
+                } else {
+                  return; // 領域外に出るまでは元のノードを移動させない
+                }
+              }
+
+              group.forEach((i) => {
+                if (State.nodes[i]) {
+                  State.nodes[i].x = initPos[i].x + dx;
+                  State.nodes[i].y = initPos[i].y + dy;
+                  Renderer.updateNodePos(i);
+                }
+              });
+
+              if (isMoved) {
+                if (targetDropId && State.nodes[targetDropId]) {
+                  Renderer.getNodeEl(targetDropId).classList.remove(
+                    "drop-target",
+                  );
+                  targetDropId = null;
+                }
+
+                const mx = (me.clientX - State.canvasX) / State.canvasScale;
+                const my = (me.clientY - State.canvasY) / State.canvasScale;
+
+                for (let i in State.nodes) {
+                  if (group.includes(i) || State.nodes[i].isHidden) continue;
+                  const tn = State.nodes[i];
+                  const tel = Renderer.getNodeEl(i);
+                  if (!tel) continue;
+
+                  const bnds = LayoutEngine._getScaledBounds(i);
+                  if (
+                    mx >= bnds.l &&
+                    mx <= bnds.r &&
+                    my >= bnds.t &&
+                    my <= bnds.b
+                  ) {
+                    targetDropId = i;
+                    tel.classList.add("drop-target");
+                    break;
+                  }
+                }
+                Renderer.updateLines();
+                UIManager.updateMenu();
+              }
+            };
+
+            const edgeScrollLoop = () => {
+              const edgeMargin = 40;
+              const scrollSpeed = 15;
+              let scrolled = false;
+
+              if (lastMouseX < edgeMargin) {
+                State.canvasX += scrollSpeed;
+                scrolled = true;
+              } else if (lastMouseX > window.innerWidth - edgeMargin) {
+                State.canvasX -= scrollSpeed;
+                scrolled = true;
+              }
+
+              if (lastMouseY < edgeMargin) {
+                State.canvasY += scrollSpeed;
+                scrolled = true;
+              } else if (lastMouseY > window.innerHeight - edgeMargin) {
+                State.canvasY -= scrollSpeed;
+                scrolled = true;
+              }
+
+              if (scrolled) {
+                UIManager.updateTransform();
+                Renderer.updateVisibility();
+                const mockEvent = { clientX: lastMouseX, clientY: lastMouseY };
+                move(mockEvent);
+              }
+
+              edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
+            };
+
+            const up = (me) => {
+              cancelAnimationFrame(edgeScrollRAF);
+              document.removeEventListener("mousemove", move);
+              document.removeEventListener("mouseup", up);
+
+              group.forEach((i) => {
+                const targetEl = Renderer.getNodeEl(i);
+                if (targetEl) targetEl.style.zIndex = 2;
+              });
+
+              // ドロップ先への親付け替え
+              if (targetDropId && State.nodes[targetDropId]) {
+                const tId = targetDropId;
+                Renderer.getNodeEl(tId).classList.remove("drop-target");
+
+                // draggedRoots: 選択中ノードのうち、親が選択されていないものだけ
+                const draggedRoots = Array.from(State.selectedIds).filter(
+                  (sid) => {
+                    let p = State.nodes[sid].parentId;
+                    while (p) {
+                      if (State.selectedIds.has(p)) return false;
+                      p = State.nodes[p].parentId;
+                    }
+                    return true;
+                  },
+                );
+
+                const isLoop = draggedRoots.some(
+                  (rId) =>
+                    tId === rId ||
+                    NodeManager.getDescendants(rId).includes(tId),
+                );
+
+                if (!isLoop) {
+                  // Ctrl: フラット化（全draggedRootsをtIdの直接の子にする、子孫は構造維持）
+                  // 通常: ツリー構造を維持したまま親付け替え（現行と同じ）
+                  draggedRoots.forEach((rId) => {
+                    const oPId = State.nodes[rId].parentId;
+                    if (oPId !== tId) {
+                      if (oPId) {
+                        State.nodes[oPId].childrenIds = State.nodes[
+                          oPId
+                        ].childrenIds.filter((c) => c !== rId);
+                        if (State.nodes[oPId].childrenIds.length === 0) {
+                          Renderer.getNodeEl(oPId)?.classList.add("is-leaf");
+                        }
+                      } else {
+                        // ルートから子へ移動
+                        State.rootIds = State.rootIds.filter((r) => r !== rId);
+                      }
+                      State.nodes[tId].isCollapsed = false;
+                      State.nodes[rId].parentId = tId;
+                      State.nodes[tId].childrenIds.push(rId);
+                      Renderer.getNodeEl(tId)?.classList.remove("is-leaf");
+                      if (oPId) NodeManager.recalculateColor(oPId);
+
+                      // Ctrl押下時: 子孫の parentId は維持（フラット化はdraggedRootsのみ）
+                      if (me.ctrlKey) {
+                        // draggedRoots の子孫を全て tId の直接の子にする
+                        const desc = NodeManager.getDescendants(rId);
+                        desc.forEach((descId) => {
+                          const dPId = State.nodes[descId].parentId;
+                          // rId 直下の子孫で、元の親 = rId のものだけ tId の子にする
+                          if (dPId === rId) {
+                            State.nodes[descId].parentId = tId;
+                            State.nodes[tId].childrenIds.push(descId);
+                            State.nodes[rId].childrenIds = State.nodes[
+                              rId
+                            ].childrenIds.filter((c) => c !== descId);
+                          }
+                        });
+                      }
+                    }
+                  });
+                  NodeManager.recalculateColor(tId);
+
+                  // X/Y座標をドロップ先の最後尾に揃える
+                  const tNode = State.nodes[tId];
+                  const baseNx =
+                    LayoutEngine._getScaledBounds(tId).r +
+                    CONFIG.layout.marginX * NodeManager.getScale(tId);
+                  const firstRoot = State.nodes[draggedRoots[0]];
+                  const ox = baseNx - firstRoot.x;
+
+                  const otherChildren = tNode.childrenIds.filter(
+                    (c) => !draggedRoots.includes(c),
+                  );
+                  let baseNy = tNode.y;
+                  if (otherChildren.length > 0) {
+                    let mb = -Infinity;
+                    otherChildren.forEach((c) => {
+                      const b = LayoutEngine.getSubtreeBox(c);
+                      if (b.bottom > mb) mb = b.bottom;
+                    });
+                    if (mb === -Infinity) mb = tNode.y;
+                    baseNy =
+                      mb + CONFIG.layout.marginY * NodeManager.getScale(tId);
+                  }
+                  const oy = baseNy - firstRoot.y;
+
+                  group.forEach((n) => {
+                    if (State.nodes[n]) {
+                      State.nodes[n].x += ox;
+                      State.nodes[n].y += oy;
+                      Renderer.updateNodePos(n);
+                    }
+                  });
+                  // スケールを再適用
+                  group.forEach((n) => Renderer.updateNodeScale(n));
+                  isMoved = true;
+
+                  setTimeout(
+                    () => CameraManager.panToNodeIfOffscreen(draggedRoots[0]),
+                    50,
+                  );
+                }
+              }
+
+              if (isMoved || isCloned) {
+                Renderer.syncDataFromDOM();
+
+                // ドロップ時のマウスY座標（キャンバス上の絶対位置）を渡すことで、
+                // ドラッグしたマウスポインタを基準に並び替え（入れ替え判定）を行う
+                const dropY = (me.clientY - State.canvasY) / State.canvasScale;
+                LayoutEngine.resolveCollisions(group, {
+                  focalId: id,
+                  focalY: dropY,
+                });
+
+                UIManager.updateMenu();
+                HistoryManager.save();
+              } else {
+                if (isAlt) {
+                  // Alt+クリック: 選択リストから解除 (ONLY REMOVE)
+                  State.selectedIds.delete(id);
+                  Renderer.getNodeEl(id)?.classList.remove("selected");
+                  UIManager.updateMenu();
+                } else if (!e.shiftKey) {
+                  // クリックのみ: 選択 + テキスト編集開始
+                  UIManager.selectOnly(id);
+                  UIManager.focusToEnd(
+                    Renderer.getNodeEl(id).querySelector(".node-input"),
+                  );
+                }
+              }
+            };
+
+            document.addEventListener("mousemove", move);
+            document.addEventListener("mouseup", up);
+            edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
+          }
+        });
+
+        // ==================== 追加/折りたたみボタン等のクリック ====================
+        DOM.canvasContainer.addEventListener("click", (e) => {
+          const aTag = e.target.closest("a");
+          if (aTag) {
+            const input = aTag.closest(".node-input");
+            // 編集モード（フォーカス中）でなければリンクを開く
+            if (input && document.activeElement !== input) {
+              e.preventDefault();
+              e.stopPropagation();
+              window.open(aTag.href, "_blank", "noopener,noreferrer");
+              return;
+            }
+          }
+
+          const btn = e.target.closest("button");
+          const el = e.target.closest(".node-box");
+          if (!btn || !el) return;
+
+          const id = el.id;
+          const n = State.nodes[id];
+
+          if (btn.classList.contains("add-btn")) {
+            Renderer.syncDataFromDOM(); // 巨大な位置ズレを防ぐため追加前に全ノード寸法を正確に同期
+            n.isCollapsed = false;
+            let ny = n.y;
+            // 新規ノードのX座標: 既存の兄弟があればその1番目のXに揃え、なければ親の右
+            let nx;
+            if (n.childrenIds.length > 0) {
+              let mb = -Infinity;
+              n.childrenIds.forEach((c) => {
+                const b = LayoutEngine.getSubtreeBox(c);
+                if (b.bottom > mb) mb = b.bottom;
+              });
+              // 全ての子ノードが隠れているなどで mb が -Infinity のままの場合は親のyを使用
+              if (mb === -Infinity) mb = n.y;
+
+              ny = mb + CONFIG.layout.marginY * NodeManager.getScale(id);
+              // 既存の「最後の子ノード（一つ上の兄弟）」のX座標を流用してX軸を揃える
+              const lastChildId = n.childrenIds[n.childrenIds.length - 1];
+              nx = State.nodes[lastChildId].x;
+            } else {
+              nx =
+                LayoutEngine._getScaledBounds(id).r +
+                CONFIG.layout.marginX * NodeManager.getScale(id);
+            }
+            NodeManager.create(nx, ny, id);
+            LayoutEngine.resolveCollisions();
+            HistoryManager.save();
+          } else if (btn.classList.contains("add-parent-btn")) {
+            const nId = NodeManager.create(
+              n.x + CONFIG.layout.parentXOffset,
+              n.y,
+              null,
+              "",
+              true,
+            );
+            // rootIds から nId を一旦外して（createが追加済み）、childrenに id を追加
+            State.nodes[nId].childrenIds.push(id);
+            // id の親を nId に
+            if (!n.parentId) {
+              State.rootIds = State.rootIds.filter((r) => r !== id);
+            }
+            n.parentId = nId;
+            NodeManager.recalculateColor(nId);
+            Renderer.getNodeEl(nId)?.classList.remove("is-leaf");
+            Renderer.updateVisibility();
+            LayoutEngine.resolveCollisions();
+            HistoryManager.save();
+          } else if (btn.classList.contains("minimize-btn")) {
+            const el = Renderer.getNodeEl(id);
+            const input = el.querySelector(".node-input");
+            const startBounds = LayoutEngine._getScaledBounds(id);
+            const oldSubtreeBox = LayoutEngine.getSubtreeBox(id);
+
+            n.isMinimized = !n.isMinimized;
+            if (n.isMinimized) {
+              el.classList.add("minimized");
+              btn.textContent = "+";
+              input.style.maxWidth = (n.minimizedMaxWidth || 60) + "px";
+            } else {
+              el.classList.remove("minimized");
+              btn.textContent = "-";
+              input.style.maxWidth = n.manualMaxWidth
+                ? n.manualMaxWidth + "px"
+                : "";
+            }
+
+            // 強制的にDOMサイズを反映
+            State.nodes[id].w = el.offsetWidth;
+            State.nodes[id].h = el.offsetHeight;
+
+            // 折りたたみ時の基準を「ノードの中心（ライン）」にするため、高さの変動分だけY座標を変移（ワープ）させる
+            const scale = NodeManager.getScale(id);
+            const startH = startBounds.h / scale;
+            const endH = State.nodes[id].h;
+
+            // Y座標のみを完全に中心に合わせる（X座標は固定）
+            // ★重要: transform: scale(s) がかかっているため、見た目上の高さの変化は (endH - startH) * scale です。
+            // したがって、見た目の中心を保つために「トップ位置(n.y)」を動かすべき距離も scale を掛けた値の半分にする必要があります！
+            const warpY = -((endH - startH) * scale) / 2;
+            n.y += warpY;
+
+            // [追加] Leapfrog現象（座標の追い越しに伴うソート反転）を防ぐため、
+            // 論理的に上にある兄弟ノードたちを事前に同じだけ上下にシフトし、順序と密着状態を物理的に維持します。
+            if (n.parentId && State.nodes[n.parentId]) {
+              const pNode = State.nodes[n.parentId];
+              const idx = pNode.childrenIds.indexOf(id);
+              if (idx > 0) {
+                const aboveSiblings = pNode.childrenIds.slice(0, idx);
+                aboveSiblings.forEach((sibId) => {
+                  const cascade = [sibId, ...NodeManager.getDescendants(sibId)];
+                  cascade.forEach((k) => {
+                    State.nodes[k].y += warpY;
+                    Renderer.updateNodePos(k);
+                  });
+                });
+              }
+            }
+
+            const endBounds = LayoutEngine._getScaledBounds(id);
+            const deltaR = endBounds.r - startBounds.r;
+
+            // 折りたたみ/展開によって生じた幅の差分(deltaR)だけ、子孫ノードを平行移動させる
+            if (Math.abs(deltaR) > 1) {
+              const descendants = NodeManager.getDescendants(id);
+              descendants.forEach((dId) => {
+                State.nodes[dId].x += deltaR;
+                Renderer.updateNodePos(dId);
+              });
+            }
+
+            const newSubtreeBox = LayoutEngine.getSubtreeBox(id);
+            const diffBottom = newSubtreeBox.bottom - oldSubtreeBox.bottom;
+
+            // サブツリーの最下端が変わった場合、それより下にある別グループのノードも含めて自動で詰める/押し出す（フローシフト・ボトム）
+            if (Math.abs(diffBottom) > 1) {
+              const excludeSet = new Set([
+                id,
+                ...NodeManager.getDescendants(id),
+                ...NodeManager.getAncestors(id),
+              ]);
+              const shifted = new Set();
+              for (const k in State.nodes) {
+                if (
+                  !excludeSet.has(k) &&
+                  State.nodes[k].y >= oldSubtreeBox.bottom - 5
+                ) {
+                  shifted.add(k);
+                  NodeManager.getDescendants(k).forEach((d) => shifted.add(d));
+                }
+              }
+              shifted.forEach((k) => {
+                State.nodes[k].y += diffBottom;
+                Renderer.updateNodePos(k);
+              });
+            }
+
+            // 自分を「不動のアンカー」として渡し、隣接する兄弟ノードの微細な重なりや余白を完全パック調整
+            LayoutEngine.resolveCollisions([id]);
+
+            Renderer.updateNodePos(id);
+            Renderer.updateLines();
+            UIManager.updateMenu();
+            HistoryManager.save();
+
+            // 万が一のDOMレンダリング遅延対策
+            setTimeout(() => {
+              State.nodes[id].w = el.offsetWidth;
+              State.nodes[id].h = el.offsetHeight;
+              Renderer.updateLines();
+              UIManager.updateMenu();
+            }, 20);
+          } else if (btn.classList.contains("collapse-btn")) {
+            const isCollapsing = !n.isCollapsed;
+            const el = Renderer.getNodeEl(id);
+            const scale = NodeManager.getScale(id);
+            const oldSubtreeBox = LayoutEngine.getSubtreeBox(id);
+
+            n.isCollapsed = isCollapsing;
+
+            if (isCollapsing) {
+              const desc = NodeManager.getDescendants(id);
+              if (State.arrowTargetId && desc.includes(State.arrowTargetId)) {
+                State.savedArrowTargetId = State.arrowTargetId;
+                State.arrowTargetId = id;
+              }
+
+              Renderer.updateVisibility();
+            } else {
+              if (State.arrowTargetId === id && State.savedArrowTargetId) {
+                State.arrowTargetId = State.savedArrowTargetId;
+                State.savedArrowTargetId = null;
+              }
+
+              Renderer.updateVisibility();
+
+              // --- 幅リサイズなどでズレた可能性がある子ノード群を親の右端に再スナップ ---
+              const parentBounds = LayoutEngine._getScaledBounds(id);
+              const targetX = parentBounds.r + CONFIG.layout.marginX * scale;
+              n.childrenIds.forEach((cId) => {
+                if (State.nodes[cId]) {
+                  const diffX = targetX - State.nodes[cId].x;
+                  if (Math.abs(diffX) > 1) {
+                    const subTree = [cId, ...NodeManager.getDescendants(cId)];
+                    subTree.forEach((sId) => {
+                      State.nodes[sId].x += diffX;
+                      Renderer.updateNodePos(sId);
+                    });
+                  }
+                }
+              });
+            }
+
+            const newSubtreeBox = LayoutEngine.getSubtreeBox(id);
+            const diffBottom = newSubtreeBox.bottom - oldSubtreeBox.bottom;
+
+            // サブツリーの最下端が変わった場合、それより下にある別グループのノードも含めて自動で詰める/押し出す（フローシフト・ボトム）
+            if (Math.abs(diffBottom) > 1) {
+              const excludeSet = new Set([
+                id,
+                ...NodeManager.getDescendants(id),
+                ...NodeManager.getAncestors(id),
+              ]);
+              const shifted = new Set();
+              for (const k in State.nodes) {
+                if (
+                  !excludeSet.has(k) &&
+                  State.nodes[k].y >= oldSubtreeBox.bottom - 5
+                ) {
+                  shifted.add(k);
+                  NodeManager.getDescendants(k).forEach((d) => shifted.add(d));
+                }
+              }
+              shifted.forEach((k) => {
+                State.nodes[k].y += diffBottom;
+                Renderer.updateNodePos(k);
+              });
+            }
+
+            LayoutEngine.resolveCollisions([id]);
+
+            Renderer.updateLines();
+            UIManager.updateArrow();
+            HistoryManager.save();
+          }
+        });
+
+        // ==================== テキスト入力の監視 ====================
+        DOM.canvasContainer.addEventListener("input", (e) => {
+          if (e.target.classList.contains("node-input")) {
+            State.justCreatedNodeId = null; // 入力開始で作成直後フラグを解除
+            const id = e.target.closest(".node-box").id;
+            State.arrowTargetId = id;
+            State.savedArrowTargetId = null;
+
+            // aria-label を更新
+            const el = Renderer.getNodeEl(id);
+            if (el)
+              el.setAttribute(
+                "aria-label",
+                e.target.innerText.trim() || "タスク",
+              );
+
+            // テキスト入力による寸法変更と、それに伴う周辺へのスライド処理
+            if (el) {
+              const s = NodeManager.getScale(id);
+              const oldW = State.nodes[id].w || el.offsetWidth;
+              const oldH = State.nodes[id].h || el.offsetHeight;
+
+              const newW = el.offsetWidth;
+              const newH = el.offsetHeight;
+
+              const deltaW = (newW - oldW) * s;
+              const deltaH = (newH - oldH) * s;
+
+              State.nodes[id].w = newW;
+              State.nodes[id].h = newH;
+
+              const oldBottom = State.nodes[id].y + oldH * s;
+
+              if (
+                Math.abs(deltaW) > 1 &&
+                State.nodes[id].childrenIds.length > 0
+              ) {
+                const desc = NodeManager.getDescendants(id);
+                desc.forEach((cId) => {
+                  State.nodes[cId].x += deltaW;
+                  Renderer.updateNodePos(cId);
+                });
+              }
+
+              if (Math.abs(deltaH) > 1) {
+                const shifted = new Set();
+                const excludeSet = new Set([
+                  id,
+                  ...NodeManager.getDescendants(id),
+                  ...NodeManager.getAncestors(id),
+                ]);
+                for (const k in State.nodes) {
+                  if (!excludeSet.has(k) && State.nodes[k].y >= oldBottom - 5) {
+                    shifted.add(k);
+                    NodeManager.getDescendants(k).forEach((d) =>
+                      shifted.add(d),
+                    );
+                  }
+                }
+                shifted.forEach((k) => {
+                  State.nodes[k].y += deltaH;
+                  Renderer.updateNodePos(k);
+                });
+              }
+            }
+
+            UIManager.updateMenu();
+            Renderer.updateLines();
+            LayoutEngine.resolveCollisions(); // 文字入力でノードが広がった際の子ノードとの被りを解消
+
+            const s = window.getSelection();
+            if (
+              s.rangeCount > 0 &&
+              s.anchorNode &&
+              s.anchorNode.nodeType === 3
+            ) {
+              const t = s.anchorNode.textContent;
+              if (t === "・" || t === "・ ") {
+                const r = document.createRange();
+                r.selectNodeContents(s.anchorNode);
+                s.removeAllRanges();
+                s.addRange(r);
+                document.execCommand("delete");
+                document.execCommand("insertUnorderedList");
+                UIManager.updateMenu();
+              }
+            }
+          }
+        });
+
+        DOM.canvasContainer.addEventListener("focusin", (e) => {
+          const nodeBox = e.target.closest(".node-box");
+          if (e.target.classList.contains("node-input") && nodeBox) {
+            State.lastEditedNodeId = nodeBox.id;
+          }
+        });
+
+        DOM.canvasContainer.addEventListener("focusout", (e) => {
+          if (e.target.classList.contains("node-input")) HistoryManager.save();
+        });
+
+        document.addEventListener("selectionchange", () =>
+          UIManager.updateMenu(),
+        );
+
+        // ==================== ショートカットキーの設定 ====================
+        document.addEventListener("keyup", (e) => {
+          if (e.key === "Shift") State.isShiftDown = false;
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Shift") State.isShiftDown = true;
+          const focused =
+            document.activeElement?.tagName === "INPUT" ||
+            document.activeElement?.tagName === "TEXTAREA" ||
+            document.activeElement?.classList.contains("node-input");
+
+          // 履歴保存の補助: 構造が変化するキー操作の直前で、一度現在の入力状態を確定保存する
+          if (
+            focused &&
+            (e.key === "Tab" || (e.key === "Enter" && (e.ctrlKey || e.metaKey)))
+          ) {
+            Renderer.syncDataFromDOM();
+            HistoryManager.save();
+          }
+
+          // ── Esc
+          if (e.key === "Escape") {
+            if (DOM.searchBar.classList.contains("show")) {
+              SearchManager.closeSearch();
+            } else if (focused) {
+              document.activeElement.blur();
+            } else if (State.selectedIds.size > 0) {
+              UIManager.selectOnly(null);
+            } else {
+              document.getElementById("help-text").classList.toggle("hidden");
+            }
+            return;
+          }
+
+          // ── 編集開始 (Enter) ─ テキスト編集中は不要
+          if (
+            e.key === "Enter" &&
+            !focused &&
+            State.selectedIds.size === 1 &&
+            !e.ctrlKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            !e.metaKey
+          ) {
+            e.preventDefault();
+            UIManager.focusToEnd(
+              Renderer.getNodeEl(
+                Array.from(State.selectedIds)[0],
+              ).querySelector(".node-input"),
+            );
+            return;
+          }
+
+          // ── 折りたたみ / 展開 (Space / Shift+Space) ─ テキスト編集中は除外
+          if (
+            !focused &&
+            e.key === " " &&
+            State.selectedIds.size > 0 &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            !e.metaKey
+          ) {
+            e.preventDefault();
+            Array.from(State.selectedIds).forEach((id) => {
+              const el = Renderer.getNodeEl(id);
+              if (el) {
+                if (e.shiftKey) {
+                  const btn = el.querySelector(".minimize-btn");
+                  if (btn) btn.click();
+                } else {
+                  const btn = el.querySelector(".collapse-btn");
+                  if (btn) btn.click();
+                }
+              }
+            });
+            return;
+          }
+
+          // ── 最後の編集ノードへジャンプ (f)
+          if (
+            !focused &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            e.key === "f"
+          ) {
+            if (
+              State.lastEditedNodeId &&
+              State.nodes[State.lastEditedNodeId] &&
+              !State.nodes[State.lastEditedNodeId].isHidden
+            ) {
+              e.preventDefault();
+              CameraManager.jumpTo(State.lastEditedNodeId);
+              UIManager.selectOnly(State.lastEditedNodeId);
+              setTimeout(() => {
+                const el = Renderer.getNodeEl(State.lastEditedNodeId);
+                if (el) UIManager.focusToEnd(el.querySelector(".node-input"));
+              }, 50);
+            }
+            return;
+          }
+
+          // ── 検索 (Ctrl+F)
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+            e.preventDefault();
+            if (DOM.searchBar.classList.contains("show")) {
+              SearchManager.closeSearch();
+            } else {
+              DOM.searchBar.classList.add("show");
+              DOM.searchInput.focus();
+            }
+            return;
+          }
+
+          // ── ファイル保存 (Ctrl+S / Ctrl+Shift+S) ─ テキスト編集中は除外
+          if (
+            !focused &&
+            (e.ctrlKey || e.metaKey) &&
+            e.key.toLowerCase() === "s"
+          ) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              FileManager.saveAs();
+            } else {
+              FileManager.save();
+            }
+            return;
+          }
+
+          // ── 優先度キー (1~9) ─ テキスト編集中は除外
+          if (
+            !focused &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            /^[1-9]$/.test(e.key)
+          ) {
+            const p = parseInt(e.key);
+            if (State.selectedIds.size === 1) {
+              // 選択中: 優先度設定（玉突きシフト付き）
+              NodeManager.setPriority(Array.from(State.selectedIds)[0], p);
+              HistoryManager.save();
+            } else if (State.selectedIds.size === 0) {
+              // 非選択: 対象ノードへカメラジャンプ
+              const target = Object.keys(State.nodes).find(
+                (k) => State.nodes[k].priority === p,
+              );
+              if (target) {
+                CameraManager.jumpTo(target);
+                UIManager.selectOnly(target);
+                setTimeout(() => {
+                  const el = Renderer.getNodeEl(target);
+                  if (el) UIManager.focusToEnd(el.querySelector(".node-input"));
+                }, 50);
+              }
+            }
+            return;
+          }
+
+          // ── カラースワップ (Tab) ─ ノード選択時（非編集中）
+          if (
+            !focused &&
+            e.key === "Tab" &&
+            State.selectedIds.size > 0 &&
+            !e.ctrlKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            !e.metaKey
+          ) {
+            e.preventDefault();
+            State.selectedIds.forEach((id) => {
+              const n = State.nodes[id];
+              let nextColor = "green";
+              if (n.color === "purple" || n.manualColor === "purple")
+                nextColor = "blue";
+              else if (
+                n.manualColor === "green" ||
+                !n.manualColor ||
+                n.color === "green"
+              )
+                nextColor = "blue";
+              else if (n.manualColor === "blue" || n.color === "blue")
+                nextColor = "red";
+              else if (n.manualColor === "red" || n.color === "red")
+                nextColor = "green";
+
+              NodeManager.setColor(id, nextColor, true);
+            });
+
+            const rootsToRecalculate = new Set();
+            State.selectedIds.forEach((id) => {
+              if (State.nodes[id].parentId)
+                rootsToRecalculate.add(State.nodes[id].parentId);
+            });
+            rootsToRecalculate.forEach((pid) =>
+              NodeManager.recalculateColor(pid),
+            );
+
+            Renderer.updateLines();
+            HistoryManager.save();
+            return;
+          }
+
+          // ── 兄弟ノード追加/移動 (Tab / Shift+Tab) ─ テキスト編集中のみ有効
+          if (focused && e.key === "Tab") {
+            let isList = false;
+            let n = window.getSelection()?.anchorNode;
+            while (n && !n.classList?.contains("node-input")) {
+              if (n.nodeName === "LI") {
+                isList = true;
+                break;
+              }
+              n = n.parentNode;
+            }
+            if (isList) {
+              e.preventDefault();
+              document.execCommand(e.shiftKey ? "outdent" : "indent");
+              HistoryManager.save();
+              return;
+            }
+
+            e.preventDefault();
+            const id = document.activeElement.closest(".node-box").id;
+            const pId = State.nodes[id].parentId;
+            const sibs = pId
+              ? State.nodes[pId].childrenIds
+              : Object.keys(State.nodes).filter(
+                  (n) => !State.nodes[n].parentId,
+                );
+            const idx = sibs.indexOf(id);
+
+            if (e.shiftKey) {
+              if (idx > 0) {
+                UIManager.selectOnly(sibs[idx - 1]);
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(sibs[idx - 1]).querySelector(
+                    ".node-input",
+                  ),
+                );
+              }
+            } else {
+              if (idx < sibs.length - 1) {
+                UIManager.selectOnly(sibs[idx + 1]);
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(sibs[idx + 1]).querySelector(
+                    ".node-input",
+                  ),
+                );
+              } else {
+                if (pId) {
+                  Renderer.getNodeEl(pId).querySelector(".add-btn").click();
+                } else {
+                  let ny =
+                    State.nodes[id].y +
+                    CONFIG.layout.siblingYOffset * NodeManager.getScale(id);
+                  while (LayoutEngine.checkCollision(State.nodes[id].x, ny))
+                    ny += 20;
+                  NodeManager.create(State.nodes[id].x, ny, null, "", true);
+                  LayoutEngine.resolveCollisions();
+                  HistoryManager.save();
+                }
+              }
+            }
+            return;
+          }
+
+          // ── 子ノード追加/親ノード戻り移動 (Ctrl+Enter / Ctrl+Shift+Enter) ─ テキスト編集中のみ
+          if (focused && (e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            const id = document.activeElement.closest(".node-box").id;
+            if (e.shiftKey) {
+              const p = State.nodes[id].parentId;
+              if (p) {
+                UIManager.selectOnly(p);
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(p).querySelector(".node-input"),
+                );
+              }
+            } else {
+              if (State.nodes[id].isCollapsed) {
+                State.nodes[id].isCollapsed = false;
+                Renderer.updateVisibility();
+                LayoutEngine.resolveCollisions();
+              }
+              if (State.nodes[id].childrenIds.length > 0) {
+                const c = State.nodes[id].childrenIds[0];
+                UIManager.selectOnly(c);
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(c).querySelector(".node-input"),
+                );
+              } else {
+                Renderer.getNodeEl(id).querySelector(".add-btn").click();
+              }
+            }
+            return;
+          }
+
+          // ── Undo / Redo
+          // テキスト編集中でも、作成直後のノードならノード生成を取り消す
+          if (
+            focused &&
+            (e.ctrlKey || e.metaKey) &&
+            e.key.toLowerCase() === "z" &&
+            !e.shiftKey
+          ) {
+            const id = document.activeElement.closest(".node-box")?.id;
+            if (id && State.justCreatedNodeId === id) {
+              e.preventDefault();
+              document.activeElement.blur();
+              HistoryManager.undo();
+              State.justCreatedNodeId = null;
+              return;
+            }
+
+            // ブラウザのネイティブUndoが他のノードの入力履歴に逆行するのを防止
+            if (document.activeElement.innerHTML === activeNodeInitialHtml) {
+              e.preventDefault();
+              UIManager.showToast("ℹ️ これ以上のテキスト取り消しはありません");
+              return;
+            }
+          }
+
+          // テキスト編集中は除外（ブラウザ標準のUndoを保護）
+          if (
+            !focused &&
+            (e.ctrlKey || e.metaKey) &&
+            e.key.toLowerCase() === "z" &&
+            !e.shiftKey
+          ) {
+            e.preventDefault();
+            HistoryManager.undo();
+            return;
+          }
+          if (
+            !focused &&
+            (e.ctrlKey || e.metaKey) &&
+            ((e.key.toLowerCase() === "z" && e.shiftKey) ||
+              e.key.toLowerCase() === "y")
+          ) {
+            e.preventDefault();
+            HistoryManager.redo();
+            return;
+          }
+
+          // ── ノード削除 (Delete / Backspace) ─ テキスト編集中は除外
+          if (
+            !focused &&
+            (e.key === "Delete" || e.key === "Backspace") &&
+            State.selectedIds.size > 0
+          ) {
+            const rIds = Object.keys(State.nodes).filter(
+              (k) => !State.nodes[k].parentId,
+            );
+            let canDelete = true;
+            State.selectedIds.forEach((s) => {
+              if (!State.nodes[s]?.parentId && rIds.length <= 1)
+                canDelete = false;
+            });
+            if (!canDelete) return;
+            State.selectedIds.forEach((id) => NodeManager.delete(id));
+            State.selectedIds.clear();
+            HistoryManager.save();
+            return;
+          }
+
+          if (
+            !focused &&
+            (e.ctrlKey || e.metaKey) &&
+            e.key.toLowerCase() === "c"
+          ) {
+            if (State.selectedIds.size > 0) {
+              e.preventDefault();
+              Renderer.syncDataFromDOM();
+              const ids = Array.from(State.selectedIds);
+
+              // 単体コピー (テキストと要素のみ、子孫情報を無視)
+              if (e.shiftKey) {
+                const markdownText = ids
+                  .map((id) => {
+                    const tmp = document.createElement("div");
+                    tmp.innerHTML = State.nodes[id].html || "タスク";
+                    return tmp.innerText.replace(/\n\s*\n/g, "\n").trim();
+                  })
+                  .join("\n");
+
+                State.internalClipboard = {
+                  markdownText,
+                  roots: ids.map((id) => {
+                    const n = State.nodes[id];
+                    return {
+                      ...JSON.parse(JSON.stringify(n)),
+                      childrenIds: [],
+                      _children: [],
+                    };
+                  }),
+                  lastText: markdownText,
+                };
+
+                navigator.clipboard.writeText(markdownText).then(() => {
+                  UIManager.showToast("📋 選択ノード単体をコピーしました");
+                });
+                return;
+              }
+
+              // ルート抽出: 親が選択済みに含まれない最上位ノードのみ
+              const roots = ids.filter((id) => {
+                let p = State.nodes[id]?.parentId;
+                while (p) {
+                  if (State.selectedIds.has(p)) return false;
+                  p = State.nodes[p]?.parentId;
+                }
+                return true;
+              });
+
+              // ルートと子孫全ノードの完全データをディープコピーして内部クリップボードに保存
+              const captureSubtree = (id) => {
+                const n = State.nodes[id];
+                if (!n) return null;
+                return {
+                  ...JSON.parse(JSON.stringify(n)),
+                  _children: n.childrenIds
+                    .map((c) => captureSubtree(c))
+                    .filter(Boolean),
+                };
+              };
+
+              const markdownText = ClipboardManager.nodesToMarkdown(ids);
+
+              const getHtml = (nodeId) => {
+                const n = State.nodes[nodeId];
+                // <div> などを <br> に置換し、余計なブロックタグを削除することで
+                // ペースト時に1つのリストアイテム（<li>）内で正しく改行されるようにする
+                let content = n.html || "タスク";
+                content = content
+                  .replace(/<div[^>]*>/gi, "<br>")
+                  .replace(/<\/div>/gi, "");
+
+                let html = `<li>${content}`;
+                if (n.childrenIds.length) {
+                  html += `<ul>${n.childrenIds.map((c) => getHtml(c)).join("")}</ul>`;
+                }
+                html += `</li>`;
+                return html;
+              };
+              const htmlText = `<ul>${roots.map((r) => getHtml(r)).join("")}</ul>`;
+
+              State.internalClipboard = {
+                markdownText,
+                roots: roots.map((r) => captureSubtree(r)),
+                // writeText の成否を記録: 失敗時はペースト時のテキスト比較をスキップ
+                textWrittenToClipboard: false,
+              };
+
+              try {
+                const textBlob = new Blob([markdownText], {
+                  type: "text/plain",
+                });
+                const htmlBlob = new Blob([htmlText], { type: "text/html" });
+                navigator.clipboard
+                  .write([
+                    new window.ClipboardItem({
+                      "text/plain": textBlob,
+                      "text/html": htmlBlob,
+                    }),
+                  ])
+                  .then(() => {
+                    if (State.internalClipboard)
+                      State.internalClipboard.textWrittenToClipboard = true;
+                  })
+                  .catch(() => {
+                    navigator.clipboard
+                      .writeText(markdownText)
+                      .then(() => {
+                        if (State.internalClipboard)
+                          State.internalClipboard.textWrittenToClipboard = true;
+                      })
+                      .catch(() => {});
+                  });
+              } catch (err) {
+                navigator.clipboard
+                  .writeText(markdownText)
+                  .then(() => {
+                    if (State.internalClipboard)
+                      State.internalClipboard.textWrittenToClipboard = true;
+                  })
+                  .catch(() => {});
+              }
+              UIManager.showToast(
+                `📋 ${roots.length}件コピー（色・優先度など完全保持）`,
+              );
+            }
+            return;
+          }
+          if (
+            focused &&
+            (e.ctrlKey || e.metaKey) &&
+            e.key.toLowerCase() === "c"
+          ) {
+            // テキスト編集中はブラウザ標準のコピーに委譲（何もしない）
+            return;
+          }
+
+          // ── ペースト (Ctrl+V) は 'paste' イベントに移動済み
+        });
+
+        // ==================== ペーストイベントの監視 (Ctrl+V ダイアログ回避) ====================
+        document.addEventListener("paste", (e) => {
+          const focused =
+            document.activeElement?.classList.contains("node-input");
+          if (focused) return; // テキスト編集中は node-input 内部の paste ハンドラに委譲
+
+          e.preventDefault();
+
+          // リッチクリップボードから複製する決定関数
+          const pasteFromInternal = (targetParentId) => {
+            if (!State.internalClipboard?.roots?.length) return;
+
+            // 全データを再帰的に再構築する内部関数
+            const rebuildSubtree = (nodeData, pId, offsetX, offsetY) => {
+              const newId = "node_" + State.counter++;
+              State.nodes[newId] = {
+                id: newId,
+                parentId: pId,
+                childrenIds: [],
+                x: nodeData.x + offsetX,
+                y: nodeData.y + offsetY,
+                w: nodeData.w,
+                h: nodeData.h,
+                html: nodeData.html,
+                color: nodeData.color,
+                manualColor: nodeData.manualColor,
+                deadline: nodeData.deadline,
+                duration: nodeData.duration,
+                waitHours: nodeData.waitHours,
+                waitStartTime: nodeData.waitStartTime,
+                isCollapsed: nodeData.isCollapsed,
+                isHidden: false,
+                manualMaxWidth: nodeData.manualMaxWidth,
+                priority: 0,
+              };
+
+              if (pId && State.nodes[pId]) {
+                State.nodes[pId].childrenIds.push(newId);
+              } else {
+                State.rootIds.push(newId);
+              }
+
+              Renderer.createNodeDOM(newId);
+
+              (nodeData._children || []).forEach((child) =>
+                rebuildSubtree(child, newId, offsetX, offsetY),
+              );
+              return newId;
+            };
+
+            // ペースト先のオフセットを計算
+            let offsetX = 50,
+              offsetY = 50;
+            if (targetParentId && State.nodes[targetParentId]) {
+              const tN = State.nodes[targetParentId];
+              const tEl = Renderer.getNodeEl(targetParentId);
+              offsetX =
+                LayoutEngine._getScaledBounds(targetParentId).r +
+                CONFIG.layout.marginX * NodeManager.getScale(targetParentId) -
+                State.internalClipboard.roots[0].x;
+              offsetY = tN.y - State.internalClipboard.roots[0].y;
+            }
+
+            const newRootIds = State.internalClipboard.roots.map((r) =>
+              rebuildSubtree(r, targetParentId, offsetX, offsetY),
+            );
+
+            Renderer.updateVisibility();
+            Renderer.syncDataFromDOM();
+            LayoutEngine.resolveCollisions();
+            if (newRootIds.length > 0) {
+              UIManager.selectOnly(newRootIds[0]);
+              if (targetParentId) NodeManager.recalculateColor(targetParentId);
+            }
+            HistoryManager.save();
+            UIManager.showToast(
+              `📋 ${newRootIds.length}件を完全複製（色・タイマー包含）`,
+            );
+          };
+
+          const text =
+            (e.clipboardData || window.clipboardData).getData("text/plain") ||
+            "";
+
+          // クリップボードが空でも内部クリップボードがあればそちらを使用
+          if (!text && State.internalClipboard) {
+            const selId =
+              State.selectedIds.size > 0
+                ? Array.from(State.selectedIds)[0]
+                : null;
+            let targetParentId = null;
+            if (selId) {
+              const srcIds = State.internalClipboard.roots.map((r) => r.id);
+              targetParentId = srcIds.includes(selId)
+                ? State.nodes[selId]?.parentId
+                : selId;
+            }
+            pasteFromInternal(targetParentId);
+            return;
+          }
+          if (!text) return;
+          const selId =
+            State.selectedIds.size > 0
+              ? Array.from(State.selectedIds)[0]
+              : null;
+
+          // アプリ内コピペかどうかを判定:
+          // ① writeText が失敗していた場合は比較せず内部クリップボードを優先
+          // ② 比較時は改行コード（CRLF/LF）を正規化してWindowsでの不一致を防ぐ
+          const normalizeNL = (s) =>
+            s.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+          const isInternalCopy =
+            State.internalClipboard !== null &&
+            (!State.internalClipboard.textWrittenToClipboard ||
+              normalizeNL(text) ===
+                normalizeNL(State.internalClipboard.markdownText));
+
+          if (isInternalCopy) {
+            // アプリ内コピペ: 完全複製パス
+            let targetParentId = null;
+            if (selId) {
+              const srcIds = State.internalClipboard.roots.map((r) => r.id);
+              targetParentId = srcIds.includes(selId)
+                ? State.nodes[selId]?.parentId
+                : selId;
+            }
+            pasteFromInternal(targetParentId);
+          } else {
+            // 外部テキスト: Markdown解析パス
+            if (text.trim()) {
+              const pId = selId || null;
+              const baseX = selId
+                ? LayoutEngine._getScaledBounds(selId).r +
+                  CONFIG.layout.marginX * NodeManager.getScale(selId)
+                : 200;
+              const baseY = selId
+                ? State.nodes[selId].y
+                : window.innerHeight / 2;
+              const created = ClipboardManager.markdownToNodes(
+                text,
+                pId,
+                baseX,
+                baseY,
+              );
+              Renderer.updateVisibility();
+              LayoutEngine.resolveCollisions();
+              if (created.length > 0) UIManager.selectOnly(created[0]);
+              HistoryManager.save();
+              UIManager.showToast(
+                `📝 ${created.length}件のノードを生成しました`,
+              );
+            }
+          }
+        });
+
+        // ==================== ツールバー操作 ====================
+        const exe = (cmd, val = null) => {
+          document.execCommand(cmd, false, val);
+          UIManager.updateMenu();
+          HistoryManager.save();
+        };
+
+        document
+          .getElementById("btn-format-bold")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            exe("bold");
+          });
+        document
+          .getElementById("btn-format-list")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            exe("insertUnorderedList");
+          });
+        document
+          .getElementById("btn-format-highlight")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            const dark =
+              document.documentElement.getAttribute("data-theme") === "dark";
+            exe(
+              "hiliteColor",
+              document
+                .getElementById("btn-format-highlight")
+                .classList.contains("active")
+                ? "transparent"
+                : dark
+                  ? "#854d0e"
+                  : "#fef08a",
+            );
+          });
+
+        document
+          .getElementById("btn-timer-menu")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById("timer-dropdown").classList.toggle("show");
+          });
+
+        document.querySelectorAll(".tab-btn").forEach((t) =>
+          t.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            document
+              .querySelectorAll(".tab-btn, .tab-content")
+              .forEach((el) => el.classList.remove("active"));
+            t.classList.add("active");
+            document.getElementById(t.dataset.target).classList.add("active");
+          }),
+        );
+
+        document.addEventListener("mousedown", (e) => {
+          if (
+            !DOM.floatMenu.contains(e.target) &&
+            !document.getElementById("timer-dropdown").contains(e.target) &&
+            e.target.closest("#btn-timer-menu") === null
+          ) {
+            document.getElementById("timer-dropdown").classList.remove("show");
+          }
+        });
+
+        // ==================== タイマー関連のイベント ====================
+        const md = document.getElementById("menu-deadline");
+        const mdu = document.getElementById("menu-duration");
+        const mw = document.getElementById("menu-waithours");
+
+        // 確実な入力許可（グローバルショートカット防止）
+        [md, mdu, mw].forEach((el) => {
+          el.addEventListener("keydown", (e) => {
+            e.stopPropagation();
+          });
+        });
+
+        md.addEventListener("input", (e) => {
+          if (State.selectedIds.size > 0) {
+            State.selectedIds.forEach((id) => {
+              State.nodes[id].deadline = e.target.value;
+              State.nodes[id].escalated = false;
+            });
+            TimerManager.evaluateAll();
+          }
+        });
+
+        mdu.addEventListener("input", (e) => {
+          if (State.selectedIds.size > 0) {
+            const dur = parseFloat(e.target.value) || 0;
+            State.selectedIds.forEach((id) => {
+              State.nodes[id].duration = dur;
+              State.nodes[id].escalated = false;
+            });
+            TimerManager.evaluateAll();
+          }
+        });
+
+        document
+          .getElementById("btn-clear-deadline")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (State.selectedIds.size > 0) {
+              State.selectedIds.forEach((id) => {
+                const n = State.nodes[id];
+                n.deadline = "";
+                n.duration = 0;
+                n.escalated = false;
+              });
+              md.value = "";
+              mdu.value = "";
+              TimerManager.evaluateAll();
+            }
+          });
+
+        mw.addEventListener("input", (e) => {
+          if (State.selectedIds.size > 0) {
+            const h = parseFloat(e.target.value) || 0;
+            State.selectedIds.forEach((id) => {
+              const n = State.nodes[id];
+              n.waitHours = h;
+              n.waitStartTime = h > 0 ? new Date().toISOString() : null;
+
+              if (h > 0) {
+                let cur = n;
+                while (cur) {
+                  if (cur.priority > 0) {
+                    NodeManager.setPriority(cur.id, 0);
+                  }
+                  cur = cur.parentId ? State.nodes[cur.parentId] : null;
+                }
+              }
+            });
+            TimerManager.evaluateAll();
+          }
+        });
+
+        document
+          .getElementById("btn-clear-wait")
+          .addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (State.selectedIds.size > 0) {
+              State.selectedIds.forEach((id) => {
+                const n = State.nodes[id];
+                n.waitHours = 0;
+                n.waitStartTime = null;
+              });
+              mw.value = "";
+              TimerManager.evaluateAll();
+            }
+          });
+
+        document.querySelectorAll(".color-btn").forEach((b) =>
+          b.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            if (State.selectedIds.size > 0) {
+              const color = e.target.dataset.color;
+              const rootsToRecalculate = new Set();
+              State.selectedIds.forEach((id) => {
+                const n = State.nodes[id];
+                // 右端（リーフ）ノード以外は、紫以外への手動色変更を禁止する
+                if (n.childrenIds.length > 0 && color !== "purple") {
+                  return;
+                }
+
+                NodeManager.setColor(id, color, true);
+                if (n.parentId) {
+                  rootsToRecalculate.add(n.parentId);
+                }
+              });
+              rootsToRecalculate.forEach((pid) =>
+                NodeManager.recalculateColor(pid),
+              );
+              Renderer.updateLines();
+              HistoryManager.save();
+            }
+          }),
+        );
+
+        // ==================== 検索バーのイベント ====================
+        DOM.searchInput.addEventListener("input", () =>
+          SearchManager.doSearch(),
+        );
+        DOM.searchClose.addEventListener("click", () =>
+          SearchManager.closeSearch(),
+        );
+        DOM.searchNext.addEventListener("click", () => {
+          if (State.searchResults.length > 0) {
+            State.currentSearchIndex =
+              (State.currentSearchIndex + 1) % State.searchResults.length;
+            SearchManager.focusSearch();
+          }
+        });
+        DOM.searchPrev.addEventListener("click", () => {
+          if (State.searchResults.length > 0) {
+            State.currentSearchIndex =
+              (State.currentSearchIndex - 1 + State.searchResults.length) %
+              State.searchResults.length;
+            SearchManager.focusSearch();
+          }
+        });
+        DOM.searchInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (e.shiftKey) {
+              State.currentSearchIndex =
+                (State.currentSearchIndex - 1 + State.searchResults.length) %
+                State.searchResults.length;
+            } else {
+              State.currentSearchIndex =
+                (State.currentSearchIndex + 1) % State.searchResults.length;
+            }
+            SearchManager.focusSearch();
+          }
+        });
+
+        // サイドバーの縮小トグル
+        document
+          .getElementById("priority-sidebar-count")
+          ?.addEventListener("click", () => {
+            document
+              .getElementById("priority-sidebar")
+              .classList.toggle("minimized");
+          });
+      }
+
+      // ==========================================
+      // 10. 初期化 (Initialize)
+      // ==========================================
+      UIManager.initTheme();
+      setupEvents();
+
+      if (!StorageManager.load() || Object.keys(State.nodes).length === 0) {
+        NodeManager.create(
+          window.innerWidth / 2 - 60,
+          window.innerHeight / 2 - 20,
+          null,
+        );
+      } else {
+        Renderer.rebuildAll();
+      }
+
+      HistoryManager.save();
+      setInterval(() => TimerManager.evaluateAll(), 1000);
+
+      // タブ間の同期
+      window.addEventListener("storage", (e) => {
+        if (e.key === "taskTreeData") {
+          if (StorageManager.load()) {
+            Renderer.rebuildAll();
+            UIManager.selectOnly(null);
+          }
+        }
+      });
+
+      // イースターエッグ：コンソールにひっそりと想いを表示
+      const consoleMessage = `
+小さなアイデアの種を蒔こう。
+それはタスクという枝葉を伸ばし、達成するごとに豊かな果実を実らせていきます。
+
+ふと立ち止まって振り返ったとき、そこにはあなたの歩んだ軌跡が、
+一本の大きな木となって静かに佇んでいるはずです。
+
+次々と弾けるアイデアが、新しい目標へと枝を広げていく。
+いつかその枝先が、誰かの育てた木と優しく交わる未来を夢見て。
+
+Task Tree は、あなたの思考と軌跡のそばにずっと寄り添い続けます。
+`;
+
+      console.log(
+        "%cTask Tree\n%c" + consoleMessage,
+        "font-size: 1.8em; font-weight: bold; color: #4CAF50; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);",
+        "font-size: 1.1em; color: #555; line-height: 1.8; font-family: sans-serif;",
+      );
+    </script>
+  </body>
+</html>
