@@ -974,7 +974,8 @@
         background-color: var(--color-red);
         box-shadow: 0 0 8px rgba(254, 0, 122, 0.8);
         z-index: 10000;
-        pointer-events: none;
+        pointer-events: auto;
+        cursor: pointer;
         display: none;
       }
 
@@ -1015,6 +1016,12 @@
         }
         #help-text {
           display: none !important;
+        }
+        #save-indicator {
+          width: 24px;
+          height: 24px;
+          bottom: 15px;
+          left: 15px;
         }
       }
     </style>
@@ -3589,6 +3596,13 @@
         setupKeyboardInteractions();
         setupSidebarInteractions();
         setupTouchInteractions();
+
+        const saveInd = document.getElementById("save-indicator");
+        saveInd.addEventListener("click", () => FileManager.save());
+        saveInd.addEventListener("touchstart", (e) => {
+          e.preventDefault();
+          FileManager.save();
+        }, {passive: false});
       }
 
       function setupTouchInteractions() {
