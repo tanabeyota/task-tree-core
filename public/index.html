@@ -196,6 +196,54 @@
         cursor: not-allowed;
       }
 
+      #redo-toggle {
+        position: absolute;
+        bottom: 20px;
+        right: 128px;
+        z-index: 1000;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        font-size: 22px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+        transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s;
+      }
+      #redo-toggle:hover {
+        transform: scale(1.1);
+      }
+
+      #undo-toggle {
+        position: absolute;
+        bottom: 20px;
+        right: 182px;
+        z-index: 1000;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        font-size: 22px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+        transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s;
+      }
+      #undo-toggle:hover {
+        transform: scale(1.1);
+      }
+
       /* 優先タスクリスト（サイドバー） */
       #priority-sidebar {
         position: absolute;
@@ -1050,6 +1098,8 @@
 
     <button id="theme-toggle" title="テーマ切り替え">🌙</button>
     <button id="cloud-toggle" title="クラウド同期 (未ログイン)">☁️</button>
+    <button id="redo-toggle" title="進む (Ctrl+Y)">↪️</button>
+    <button id="undo-toggle" title="戻る (Ctrl+Z)">↩️</button>
 
     <div id="search-bar">
       <svg
@@ -5594,7 +5644,7 @@
 
           try {
             const generateTaskTree = window.CloudSyncManager.httpsCallable(window.CloudSyncManager.functions, 'generateTaskTree');
-            const result = await generateTaskTree({ text });
+            const result = await generateTaskTree({ text, currentTime: new Date().toISOString() });
             
             const { summary, tree } = result.data;
             
@@ -5626,6 +5676,19 @@
 
                      const text = (item.children && item.children.length > 0) ? "📂 " + item.text : item.text;
                      const newId = NodeManager.create(currentX, currentY, parentId, text, focus);
+                     if (item.deadline) {
+                        State.nodes[newId].deadline = item.deadline;
+                     }
+                     if (item.duration) {
+                        State.nodes[newId].duration = item.duration;
+                     }
+                     
+                     if (item.deadline) {
+                        State.nodes[newId].deadline = item.deadline;
+                     }
+                     if (item.duration) {
+                        State.nodes[newId].duration = item.duration;
+                     }
                      
                      // Force physics check immediately to fan out the nodes organically while waiting
                      Renderer.rebuildAll();
@@ -5644,6 +5707,7 @@
             
             Renderer.rebuildAll();
             LayoutEngine.resolveCollisions();
+            setTimeout(() => SidebarManager.update(), 0); // Update Sidebar UI to feature timers
             HistoryManager.save();
             UIManager.showToast("分解完了！");
           } catch(err) {

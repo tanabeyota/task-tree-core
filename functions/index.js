@@ -19,14 +19,19 @@ exports.generateTaskTree = onCall({
     );
   }
 
-  const { text } = request.data;
+  const { text, currentTime } = request.data;
   if (!text) {
     throw new HttpsError("invalid-argument", "テキストが提供されていません。");
   }
 
   // 2. Call Gemini API
   const prompt = `以下のタスクテキストを分析し、1つの短い「要約」と、実行するための手順を「階層的なツリー構造」に分解してください。
-テキストの複雑さや情報量に応じて、AI自身が「適切な深さ」の階層（フラットが良いか、深い分類が必要か）を自由に判断してください。
+テキストの複雑さや情報量に応じて、AI自身が「適切な深さ」の階層を自由に判断してください。
+
+【時間・締め切りの自動抽出について】
+テキスト内に「時間枠（例: 2時間）」や「締め切り（例: 今日の15時まで、明日の朝など）」の指定があれば、それを抽出し "duration"（数値, 単位は時間）や "deadline"（ISO8601形式の文字列 "YYYY-MM-DDTHH:mm"）として設定してください。
+※ 基準となる現在時刻は【${currentTime}】です。この時刻を基準にして、締め切り日時を正確なISO文字列に変換してください。時間指定がない場合は null を設定するかプロパティを省略してください。
+
 出力は必ず以下のJSONスキーマに厳密に従ってください。マークダウン（\`\`\`json 等）は含めず、純粋なJSONテキストのみを出力してください。
 
 【出力JSONスキーマ】
@@ -35,6 +40,8 @@ exports.generateTaskTree = onCall({
   "tree": [
     {
       "text": "大きなタスクまたはカテゴリ名",
+      "deadline": "2026-04-20T15:00", 
+      "duration": 2.5,
       "children": [
         {
           "text": "詳細タスク1",
@@ -44,7 +51,7 @@ exports.generateTaskTree = onCall({
     }
   ]
 }
-※ "children" 配列の中には、さらに同じ形式 { "text": "...", "children": [...] } を必要な深さまで自由にネストさせて構いません。これ以上分解する必要がない場合は空配列 [] を指定してください。
+※ "children" 配列の中には、さらに同じ形式 { "text": "...", "deadline": "...", "duration": ..., "children": [...] } を必要な深さまで自由にネストさせて構いません。これ以上分解する必要がない場合は空配列 [] を指定してください。
 
 【タスクテキスト】
 ${text}`;
