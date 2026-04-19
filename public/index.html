@@ -3884,8 +3884,8 @@
           )
             return;
 
-          if ((e.button === 1 && e.altKey) || (e.button === 2 && !e.shiftKey)) {
-            // Alt+中ドラッグ または 右クリックドラッグ → ズーム
+          if ((e.button === 1 && (e.altKey || e.ctrlKey)) || (e.button === 2 && !e.shiftKey)) {
+            // Alt/Ctrl+中ドラッグ または 右クリックドラッグ → ズーム
             if (!e.target.closest("#viewport")) return;
             e.preventDefault();
             isRightDragZooming = true;
@@ -3894,7 +3894,7 @@
             rightDragStartScale = State.canvasScale;
             DOM.viewport.style.cursor = "ns-resize";
           } else if (e.button === 1 || (e.button === 2 && e.shiftKey)) {
-            // 中ボタン（Altなし） または Shift+右クリック → パン
+            // 中ボタン（Alt/Ctrlなし） または Shift+右クリック → パン
             e.preventDefault();
             isPanning = true;
             startPanX = e.clientX;
@@ -4015,19 +4015,34 @@
           (e) => {
             CameraManager.cancel();
             e.preventDefault();
-            let ns = State.canvasScale * (1 - e.deltaY * 0.001);
-            ns = Math.max(0.005, Math.min(ns, 50));
 
-            const r = DOM.viewport.getBoundingClientRect();
-            const mx = e.clientX - r.left;
-            const my = e.clientY - r.top;
+            // ① ピンチ操作の判定（ブラウザはピンチを「Ctrlキー＋ホイール」として認識します）
+            const isTrackpadPinch = e.ctrlKey;
+            
+            // ② マウスのコロコロか、トラックパッドの2本指スクロールかを判定
+            const isTrackpadScroll = !isTrackpadPinch && (Math.abs(e.deltaY) < 50 || e.deltaY % 1 !== 0 || Math.abs(e.deltaX) > 0);
 
-            State.canvasX =
-              mx - (mx - State.canvasX) * (ns / State.canvasScale);
-            State.canvasY =
-              my - (my - State.canvasY) * (ns / State.canvasScale);
-            State.canvasScale = ns;
-            UIManager.updateTransform();
+            if (isTrackpadScroll) {
+              // ✋ 【移動操作】トラックパッドの2本指スクロール
+              State.canvasX -= e.deltaX;
+              State.canvasY -= e.deltaY;
+              UIManager.updateTransform();
+            } else {
+              // 🔍 【Zoom操作】マウスホイールのコロコロ または トラックパッドのピンチ
+              // ピンチ時（deltaYが小さい）とマウスホイール（大）で感度を微調整、Math.expで綺麗に対称スケール
+              const zoomSpeed = isTrackpadPinch ? 0.01 : 0.001;
+              let ns = State.canvasScale * Math.exp(-e.deltaY * zoomSpeed);
+              ns = Math.max(0.005, Math.min(ns, 50));
+
+              const r = DOM.viewport.getBoundingClientRect();
+              const mx = e.clientX - r.left;
+              const my = e.clientY - r.top;
+
+              State.canvasX = mx - (mx - State.canvasX) * (ns / State.canvasScale);
+              State.canvasY = my - (my - State.canvasY) * (ns / State.canvasScale);
+              State.canvasScale = ns;
+              UIManager.updateTransform();
+            }
           },
           { passive: false },
         );
