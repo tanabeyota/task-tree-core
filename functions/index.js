@@ -43,7 +43,7 @@ ${text}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-lite", // fallback to a known model since 3.1 doesn't exist
+      model: "gemini-3.1-flash-lite-preview",
       contents: prompt,
       config: {
           responseMimeType: "application/json",
