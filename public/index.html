@@ -3658,7 +3658,7 @@
                 startPanX = e.touches[0].clientX;
                 startPanY = e.touches[0].clientY;
             } else {
-                e.preventDefault(); // ONLY prevent scroll when panning the background!
+                // DO NOT preventDefault on touchstart! Let click propagate to background!
                 isPanning = true;
                 isNodeDragging = false;
                 startPanX = e.touches[0].clientX;
@@ -4491,6 +4491,7 @@
                 } else if (!e.shiftKey) {
                   // クリックのみ: 選択 + テキスト編集開始
                   UIManager.selectOnly(id);
+                  UIManager.updateMenu();
                   UIManager.focusToEnd(
                     Renderer.getNodeEl(id).querySelector(".node-input"),
                   );
