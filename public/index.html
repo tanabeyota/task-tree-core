@@ -172,17 +172,16 @@
         width: 44px;
         height: 44px;
         border-radius: 50%;
-        background: transparent;
-        border: none;
-        color: var(--text-sub);
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
         font-size: 22px;
         cursor: pointer;
         display: flex;
         justify-content: center;
         align-items: center;
-        box-shadow: none;
-        backdrop-filter: none;
-        opacity: 0.6;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
         transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s;
       }
       #cloud-toggle:hover {
