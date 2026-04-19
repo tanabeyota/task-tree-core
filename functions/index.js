@@ -1,4 +1,4 @@
-require("dotenv").config();
+// require("dotenv").config();
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { GoogleGenAI } = require("@google/genai");
 
