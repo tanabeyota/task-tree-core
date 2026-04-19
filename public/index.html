@@ -3719,11 +3719,12 @@
             UIManager.updateTheme();
           } else if (isLongPressDragging) {
              e.preventDefault();
-             document.dispatchEvent(new MouseEvent("mousemove", {
-                 clientX: e.touches[0].clientX,
-                 clientY: e.touches[0].clientY,
-                 bubbles: true, cancelable: true, button: 0
-             }));
+             if (DragAndDropSubsystem.__activeDragMove) {
+                 DragAndDropSubsystem.__activeDragMove({
+                     clientX: e.touches[0].clientX,
+                     clientY: e.touches[0].clientY,
+                 });
+             }
           }
         }, {passive: false});
 
@@ -3742,13 +3743,30 @@
           }
 
           if (isLongPressDragging) {
-             document.dispatchEvent(new MouseEvent("mouseup", {
-                 clientX: e.changedTouches[0].clientX,
-                 clientY: e.changedTouches[0].clientY,
-                 bubbles: true, cancelable: true, button: 0
-             }));
+             if (DragAndDropSubsystem.__activeDragUp) {
+                 DragAndDropSubsystem.__activeDragUp({
+                     clientX: e.changedTouches[0].clientX,
+                     clientY: e.changedTouches[0].clientY,
+                 });
+             }
              isLongPressDragging = false;
           }
+
+          possibleDragEl = null;
+        });
+
+        window.addEventListener("touchcancel", (e) => {
+          clearTimeout(longPressTimer);
+          if (isLongPressDragging) {
+             if (DragAndDropSubsystem.__activeDragUp) {
+                 DragAndDropSubsystem.__activeDragUp({
+                     clientX: e.changedTouches?.[0]?.clientX || startPanX,
+                     clientY: e.changedTouches?.[0]?.clientY || startPanY,
+                 });
+             }
+             isLongPressDragging = false;
+          }
+          possibleDragEl = null;
 
           possibleDragEl = null;
 
@@ -4384,6 +4402,8 @@
               cancelAnimationFrame(edgeScrollRAF);
               document.removeEventListener("mousemove", move);
               document.removeEventListener("mouseup", up);
+              DragAndDropSubsystem.__activeDragMove = null;
+              DragAndDropSubsystem.__activeDragUp = null;
 
               group.forEach((i) => {
                 const targetEl = Renderer.getNodeEl(i);
@@ -4523,6 +4543,8 @@
 
             document.addEventListener("mousemove", move);
             document.addEventListener("mouseup", up);
+            DragAndDropSubsystem.__activeDragMove = move;
+            DragAndDropSubsystem.__activeDragUp = up;
             edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
           }
         };
