@@ -5465,7 +5465,32 @@
                    }
 
                    const cloudTime = data.updatedAt ? data.updatedAt.toDate() : new Date();
-                   if (confirm(`☁️ クラウド上に新しいデータがあります (${cloudTime.toLocaleString()})\n\n別の端末で保存した続きから始めますか？\n（現在のローカル未保存データは上書きされます）`)) {
+                   
+                   const showSyncModal = (cloudTimeStr, json, onConfirm) => {
+                       if (document.getElementById("sync-modal")) return;
+                       const div = document.createElement("div");
+                       div.id = "sync-modal";
+                       div.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
+                       div.innerHTML = `
+                         <div style="background:var(--menu-bg, #fff);border:1px solid var(--border-color, #ccc);padding:24px;border-radius:12px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.3);max-width:400px;color:var(--text-main, #333);">
+                           <h3 style="margin-top:0;">☁️ クラウド同期</h3>
+                           <p style="margin-bottom:20px;line-height:1.5;">別の端末で保存された続きがあります<br><span style="color:var(--text-sub, #666);font-size:0.9em;">(${cloudTimeStr})</span></p>
+                           <p style="margin-bottom:24px;font-size:0.9em;color:#e74c3c;font-weight:bold;">※取得すると現在の未保存タブ状態は破棄されます</p>
+                           <div style="display:flex;gap:12px;justify-content:center;">
+                             <button id="btn-sync-cancel" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color, #ccc);background:transparent;color:var(--text-main, #333);cursor:pointer;">後で</button>
+                             <button id="btn-sync-ok" style="padding:8px 16px;border-radius:6px;border:none;background:#2196F3;color:#fff;cursor:pointer;font-weight:bold;">データを取得して再開</button>
+                           </div>
+                         </div>
+                       `;
+                       document.body.appendChild(div);
+                       div.querySelector("#btn-sync-cancel").onclick = () => div.remove();
+                       div.querySelector("#btn-sync-ok").onclick = () => {
+                          div.remove();
+                          onConfirm();
+                       };
+                   };
+
+                   showSyncModal(cloudTime.toLocaleString(), data.json, () => {
                       localStorage.setItem("taskTreeData", data.json);
                       if (StorageManager.load()) {
                          Renderer.rebuildAll();
@@ -5474,7 +5499,7 @@
                          UIManager.setDirty(false);
                          UIManager.showToast("☁️ クラウドから復元しました");
                       }
-                   }
+                   });
                 } else if (!silent) {
                    UIManager.showToast("☁️ クラウドにデータがありません");
                 }
