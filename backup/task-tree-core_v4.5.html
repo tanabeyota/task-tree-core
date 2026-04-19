@@ -158,42 +158,6 @@
         backdrop-filter: blur(8px);
       }
 
-      #theme-toggle:hover {
-        transform: scale(1.1);
-      }
-
-      #cloud-toggle {
-        position: absolute;
-        bottom: 20px;
-        right: 74px;
-        z-index: 1000;
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        background: var(--menu-bg);
-        border: 1px solid var(--border-color);
-        color: var(--text-main);
-        font-size: 22px;
-        cursor: pointer;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-        backdrop-filter: blur(8px);
-        transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s;
-      }
-      #cloud-toggle:hover {
-        transform: scale(1.1);
-      }
-      #cloud-toggle.logged-in {
-        box-shadow: 0 0 12px rgba(0, 192, 255, 0.7);
-        border-color: rgba(0, 192, 255, 0.5);
-      }
-      #cloud-toggle.offline {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
       /* 優先タスクリスト（サイドバー） */
       #priority-sidebar {
         position: absolute;
@@ -995,7 +959,6 @@
     </div>
 
     <button id="theme-toggle" title="テーマ切り替え">🌙</button>
-    <button id="cloud-toggle" title="クラウド同期 (未ログイン)">☁️</button>
 
     <div id="search-bar">
       <svg
@@ -1282,7 +1245,6 @@
         floatMenu: document.getElementById("floating-menu"),
         arrow: document.getElementById("current-task-arrow"),
         themeToggle: document.getElementById("theme-toggle"),
-        cloudToggle: document.getElementById("cloud-toggle"),
         searchBar: document.getElementById("search-bar"),
         searchInput: document.getElementById("search-input"),
         searchCount: document.getElementById("search-count"),
@@ -1802,45 +1764,6 @@
             DOM.themeToggle.textContent = t === "dark" ? "☀️" : "🌙";
             UIManager.updateMenu();
           });
-        },
-
-        setOfflineStatus() {
-          if (DOM.cloudToggle) {
-            DOM.cloudToggle.classList.add("offline");
-            DOM.cloudToggle.title = "オフライン";
-            DOM.cloudToggle.innerText = "🌩️";
-          }
-        },
-        initAuthStatus() {
-          if (DOM.cloudToggle) {
-            DOM.cloudToggle.classList.remove("offline");
-            DOM.cloudToggle.title = "クラウド連携 (ログイン)";
-            DOM.cloudToggle.innerText = "☁️";
-
-            DOM.cloudToggle.addEventListener("click", () => {
-              if (window.CloudSyncManager.offline) {
-                UIManager.showToast("⚠️ オフラインまたは連携が無効です");
-                return;
-              }
-              if (window.CloudSyncManager.user) {
-                if(confirm("ログアウトしますか？\n(手動でクラウドからPullしたい場合はリロードしてください)")) {
-                  window.CloudSyncManager.logout();
-                }
-              } else {
-                window.CloudSyncManager.login();
-              }
-            });
-          }
-        },
-        updateAuthStatus(user) {
-          if (!DOM.cloudToggle) return;
-          if (user) {
-            DOM.cloudToggle.classList.add("logged-in");
-            DOM.cloudToggle.title = "クラウド同期有効 (クリックでログアウト)";
-          } else {
-            DOM.cloudToggle.classList.remove("logged-in");
-            DOM.cloudToggle.title = "クラウド連携 (ログイン)";
-          }
         },
 
         updateTransform() {
@@ -3351,7 +3274,6 @@
           await writable.write(data);
           await writable.close();
           UIManager.setDirty(false);
-          window.CloudSyncManager.pushToCloud(data);
         },
 
         _fallbackSave(data) {
@@ -3365,7 +3287,6 @@
           URL.revokeObjectURL(a.href);
           UIManager.setDirty(false);
           UIManager.showToast("💾 ダウンロードしました");
-          window.CloudSyncManager.pushToCloud(data);
         },
 
         /** JSON をパースして現在のツリーにマージインポート */
@@ -5389,110 +5310,9 @@
       }
 
       // ==========================================
-      // 9. Cloud Sync Manager (Firebase)
-      // ==========================================
-      window.CloudSyncManager = {
-        offline: true,
-        user: null,
-        login: async () => { UIManager.showToast("⚠️ オフラインか連携が無効です"); },
-        logout: async () => {},
-        pushToCloud: async (dataStr) => {},
-        pullFromCloud: async (silent = false) => {},
-      };
-
-      (async () => {
-        try {
-          const [{ initializeApp }, { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }, { getFirestore, doc, setDoc, getDoc, serverTimestamp }] = await Promise.all([
-            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js"),
-            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-auth.js"),
-            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js")
-          ]);
-
-          const firebaseConfig = {
-            apiKey: "AIzaSyACTpHEVneg69TgsGX7TPkC7oFsagwklqo",
-            authDomain: "task-tree-core.firebaseapp.com",
-            projectId: "task-tree-core",
-            storageBucket: "task-tree-core.firebasestorage.app",
-            messagingSenderId: "533213085680",
-            appId: "1:533213085680:web:a892afe6b6ad7f68b6e735",
-            measurementId: "G-3EXNDB5E9X"
-          };
-          const app = initializeApp(firebaseConfig);
-          const auth = getAuth(app);
-          const db = getFirestore(app);
-          const provider = new GoogleAuthProvider();
-
-          window.CloudSyncManager.offline = false;
-          window.CloudSyncManager.login = async () => {
-            try { await signInWithPopup(auth, provider); } catch(e) { console.error(e); }
-          };
-          window.CloudSyncManager.logout = async () => {
-            try { await signOut(auth); } catch(e) { console.error(e); }
-          };
-          window.CloudSyncManager.pushToCloud = async (dataStr) => {
-            if (window.CloudSyncManager.user) {
-              try {
-                const uid = window.CloudSyncManager.user.uid;
-                await setDoc(doc(db, "users", uid, "data", "latest"), {
-                  json: dataStr,
-                  updatedAt: serverTimestamp()
-                });
-                UIManager.showToast("☁️ クラウドへバックアップ完了");
-              } catch(e) {
-                console.error("Cloud push failed:", e);
-                UIManager.showToast("⚠️ クラウド保存に失敗しました");
-              }
-            }
-          };
-          window.CloudSyncManager.pullFromCloud = async (silent = false) => {
-            if (window.CloudSyncManager.user) {
-              try {
-                const uid = window.CloudSyncManager.user.uid;
-                const docSnap = await getDoc(doc(db, "users", uid, "data", "latest"));
-                if (docSnap.exists()) {
-                   const data = docSnap.data();
-                   if (!data.json) return;
-                   
-                   if (data.json === FileManager.getExportData()) {
-                      if(!silent) UIManager.showToast("☁️ クラウドと同期済みです");
-                      return;
-                   }
-
-                   const cloudTime = data.updatedAt ? data.updatedAt.toDate() : new Date();
-                   if (confirm(`☁️ クラウド上に最新データがあります (${cloudTime.toLocaleString()})\n\nローカルに読み込んで上書きしますか？\n（現在のローカル未保存データは消去されます）`)) {
-                      if (FileManager.importJSON(data.json)) {
-                         StorageManager.save();
-                         UIManager.setDirty(false);
-                         UIManager.showToast("☁️ クラウドからデータを復元しました");
-                      }
-                   }
-                } else if (!silent) {
-                   UIManager.showToast("☁️ クラウドにデータがありません");
-                }
-              } catch(e) {
-                console.error(e);
-              }
-            }
-          };
-
-          onAuthStateChanged(auth, (user) => {
-            window.CloudSyncManager.user = user;
-            UIManager.updateAuthStatus(user);
-            if (user) {
-               window.CloudSyncManager.pullFromCloud(true);
-            }
-          });
-        } catch (err) {
-          console.warn("Firebase load failed, running completely offline:", err);
-          UIManager.setOfflineStatus();
-        }
-      })();
-
-      // ==========================================
       // 10. 初期化 (Initialize)
       // ==========================================
       UIManager.initTheme();
-      UIManager.initAuthStatus();
       setupEvents();
 
       if (!StorageManager.load() || Object.keys(State.nodes).length === 0) {
