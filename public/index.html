@@ -1003,7 +1003,7 @@
         }
         #floating-menu {
           top: auto !important;
-          bottom: 20px !important;
+          bottom: var(--menu-bottom-offset, 20px) !important;
           left: 10px !important;
           right: 10px !important;
           width: auto !important;
@@ -5741,6 +5741,17 @@
       // ==========================================
       UIManager.initTheme();
       UIManager.initAuthStatus();
+      window.visualViewport?.addEventListener("resize", () => {
+        if (window.innerWidth > 768) return;
+        const vp = window.visualViewport;
+        const offset = window.innerHeight - vp.height;
+        if (offset > 50) {
+          document.documentElement.style.setProperty('--menu-bottom-offset', (offset + 10) + 'px');
+        } else {
+          document.documentElement.style.setProperty('--menu-bottom-offset', '20px');
+        }
+      });
+      
       setupEvents();
 
       if (!StorageManager.load() || Object.keys(State.nodes).length === 0) {
