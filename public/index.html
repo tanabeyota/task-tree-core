@@ -1582,13 +1582,17 @@
           el.innerHTML = `
                     <div class="timer-badge"></div>
                     <div class="priority-badge${n.priority ? " visible" : ""}">${n.priority || ""}</div>
-                    <div class="node-input" contenteditable="true" data-placeholder="タスク名">${n.html}</div>
+                    <div class="node-input" contenteditable="false" data-placeholder="タスク">${n.html}</div>
                     <div class="resize-edge-right"></div>
                     <button class="add-parent-btn" title="親を追加">+</button>
                     <button class="minimize-btn" title="ノードを縮小">${n.isMinimized ? "+" : "-"}</button>
                     <button class="collapse-btn">-</button>
                     <button class="add-btn" title="子を追加">+</button>
                 `;
+
+          el.querySelector(".node-input").addEventListener("focusout", (e) => {
+            e.target.contentEditable = "false";
+          });
 
           if (n.isMinimized) {
             el.querySelector(".node-input").style.maxWidth =
@@ -2080,6 +2084,7 @@
 
         focusToEnd(el) {
           if (!el) return;
+          el.contentEditable = "true";
           // preventScroll: true でブラウザの強制スクロールを抑制
           el.focus({ preventScroll: true });
           if (window.getSelection && document.createRange) {
