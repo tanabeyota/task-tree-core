@@ -74,7 +74,7 @@
         transition: background-color 0.3s ease;
       }
 
-      #viewport {
+      #viewport { touch-action: none;
         /* fixed にすることでフォーカス時のブラウザ強制スクロールを防ぐ */
         position: fixed;
         top: 0;
@@ -101,7 +101,7 @@
         -webkit-touch-callout: none;
       }
 
-      #canvas-container {
+      #canvas-container { touch-action: none;
         position: absolute;
         top: 0;
         left: 0;
@@ -363,7 +363,7 @@
       /* ==========================================
            ノード (タスク要素)
         ========================================== */
-      .node-box {
+      .node-box { touch-action: none;
         position: absolute;
         background: transparent;
         border: 2.5px solid var(--color-green);
@@ -419,7 +419,7 @@
         z-index: 6;
       }
 
-      .node-input {
+      .node-input { touch-action: none;
         border: none;
         outline: none;
         background: transparent;
