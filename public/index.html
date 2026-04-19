@@ -3864,14 +3864,16 @@
           rightDragStartX = 0,
           rightDragStartY = 0,
           rightDragStartScale = 1;
+        let isPenMiddleDrag = false;
+
         document.addEventListener("focusin", (e) => {
           if (e.target.classList.contains("node-input")) {
             State.activeNodeInitialHtml = e.target.innerHTML;
           }
         });
 
-        // ==================== キャンバス操作 ====================
-        window.addEventListener("mousedown", (e) => {
+        // ==================== キャンバス操作 (Pointer Events) ====================
+        window.addEventListener("pointerdown", (e) => {
           // カメラアニメーションをキャンセル（ユーザー操作優先）
           CameraManager.cancel();
 
@@ -3883,6 +3885,28 @@
               e.target.closest("#search-bar"))
           )
             return;
+
+          if (e.pointerType === "pen" && e.button === 1) {
+            e.preventDefault();
+            isPenMiddleDrag = true;
+            if (e.pressure > 0) {
+              // 接地時はズーム
+              isRightDragZooming = true;
+              rightDragStartX = e.clientX;
+              rightDragStartY = e.clientY;
+              rightDragStartScale = State.canvasScale;
+              DOM.viewport.style.cursor = "ns-resize";
+            } else {
+              // ホバー時はパン
+              isPanning = true;
+              startPanX = e.clientX;
+              startPanY = e.clientY;
+              startCanvasX = State.canvasX;
+              startCanvasY = State.canvasY;
+              DOM.viewport.style.cursor = "grabbing";
+            }
+            return;
+          }
 
           if ((e.button === 1 && (e.altKey || e.ctrlKey)) || (e.button === 2 && !e.shiftKey)) {
             // Alt/Ctrl+中ドラッグ または 右クリックドラッグ → ズーム
@@ -3926,7 +3950,29 @@
           }
         });
 
-        window.addEventListener("mousemove", (e) => {
+        window.addEventListener("pointermove", (e) => {
+          if (isPenMiddleDrag) {
+            // ペンタブ中ボタンドラッグ中の動的ホバー/接地の切り替え
+            if (e.pressure > 0 && !isRightDragZooming) {
+              // 接地：Zoomにシームレス移行
+              isRightDragZooming = true;
+              isPanning = false;
+              rightDragStartX = e.clientX;
+              rightDragStartY = e.clientY;
+              rightDragStartScale = State.canvasScale;
+              DOM.viewport.style.cursor = "ns-resize";
+            } else if (e.pressure === 0 && !isPanning) {
+              // ホバー：Panにシームレス移行
+              isPanning = true;
+              isRightDragZooming = false;
+              startPanX = e.clientX;
+              startPanY = e.clientY;
+              startCanvasX = State.canvasX;
+              startCanvasY = State.canvasY;
+              DOM.viewport.style.cursor = "grabbing";
+            }
+          }
+
           if (isPanning) {
             State.canvasX = startCanvasX + (e.clientX - startPanX);
             State.canvasY = startCanvasY + (e.clientY - startPanY);
@@ -3987,7 +4033,10 @@
           }
         });
 
-        window.addEventListener("mouseup", () => {
+        window.addEventListener("pointerup", (e) => {
+          if (isPenMiddleDrag) {
+            isPenMiddleDrag = false;
+          }
           if (isPanning) {
             isPanning = false;
             DOM.viewport.style.cursor = "default";
