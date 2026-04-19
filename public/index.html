@@ -4076,442 +4076,442 @@
         });
       }
 
-      function setupGlobalClickRouter() {
-        const DragAndDropSubsystem = {
-          startNodeResize(e) {
-            e.stopPropagation();
-            const el = e.target.closest(".node-box");
-            if (!el) return;
-            const id = el.id;
-            const input = el.querySelector(".node-input");
-            let sx = e.clientX;
+      const DragAndDropSubsystem = {
+        startNodeResize(e) {
+          e.stopPropagation();
+          const el = e.target.closest(".node-box");
+          if (!el) return;
+          const id = el.id;
+          const input = el.querySelector(".node-input");
+          let sx = e.clientX;
 
-            const isMin = el.classList.contains("minimized");
-            let startMaxWidth = isMin
-              ? State.nodes[id].minimizedMaxWidth || 60
-              : State.nodes[id].manualMaxWidth;
-            if (!startMaxWidth && !isMin) {
-              const computedMax = window.getComputedStyle(input).maxWidth;
-              startMaxWidth =
-                computedMax && computedMax !== "none"
-                  ? parseFloat(computedMax)
-                  : input.offsetWidth;
+          const isMin = el.classList.contains("minimized");
+          let startMaxWidth = isMin
+            ? State.nodes[id].minimizedMaxWidth || 60
+            : State.nodes[id].manualMaxWidth;
+          if (!startMaxWidth && !isMin) {
+            const computedMax = window.getComputedStyle(input).maxWidth;
+            startMaxWidth =
+              computedMax && computedMax !== "none"
+                ? parseFloat(computedMax)
+                : input.offsetWidth;
+          }
+          const startBounds = LayoutEngine._getScaledBounds(id);
+
+          const move = (me) => {
+            const dx =
+              (me.clientX - sx) /
+              (State.canvasScale * NodeManager.getScale(id));
+            const newMaxWidth = Math.max(isMin ? 30 : 60, startMaxWidth + dx);
+
+            if (isMin) {
+              State.nodes[id].minimizedMaxWidth = newMaxWidth;
+            } else {
+              State.nodes[id].manualMaxWidth = newMaxWidth;
             }
-            const startBounds = LayoutEngine._getScaledBounds(id);
+            input.style.maxWidth = newMaxWidth + "px";
+            UIManager.setDirty(true);
 
-            const move = (me) => {
-              const dx =
-                (me.clientX - sx) /
-                (State.canvasScale * NodeManager.getScale(id));
-              const newMaxWidth = Math.max(isMin ? 30 : 60, startMaxWidth + dx);
+            State.nodes[id].w = el.offsetWidth;
+            State.nodes[id].h = el.offsetHeight;
 
-              if (isMin) {
-                State.nodes[id].minimizedMaxWidth = newMaxWidth;
-              } else {
-                State.nodes[id].manualMaxWidth = newMaxWidth;
-              }
-              input.style.maxWidth = newMaxWidth + "px";
-              UIManager.setDirty(true);
+            Renderer.updateNodePos(id);
+            Renderer.updateLines();
+            UIManager.updateMenu();
+          };
 
-              State.nodes[id].w = el.offsetWidth;
-              State.nodes[id].h = el.offsetHeight;
+          const up = () => {
+            document.removeEventListener("mousemove", move);
+            document.removeEventListener("mouseup", up);
+            Renderer.syncDataFromDOM();
 
-              Renderer.updateNodePos(id);
-              Renderer.updateLines();
-              UIManager.updateMenu();
-            };
+            const endBounds = LayoutEngine._getScaledBounds(id);
+            const deltaR = endBounds.r - startBounds.r;
 
-            const up = () => {
-              document.removeEventListener("mousemove", move);
-              document.removeEventListener("mouseup", up);
-              Renderer.syncDataFromDOM();
+            if (deltaR < -1) {
+              LayoutEngine.shiftDescendantsX(id, deltaR);
+            }
 
-              const endBounds = LayoutEngine._getScaledBounds(id);
-              const deltaR = endBounds.r - startBounds.r;
+            LayoutEngine.resolveRightwardCollisions();
+            HistoryManager.save();
+          };
 
-              if (deltaR < -1) {
-                LayoutEngine.shiftDescendantsX(id, deltaR);
-              }
+          document.addEventListener("mousemove", move);
+          document.addEventListener("mouseup", up);
+        },
 
-              LayoutEngine.resolveRightwardCollisions();
-              HistoryManager.save();
-            };
+        startNodeDragSession(e, el) {
+          const id = el.id;
+          const n = State.nodes[id];
 
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", up);
-          },
+          // テキスト編集中は内部要素でのドラッグをテキスト選択として許可
+          const inputEl = Renderer.getNodeEl(id)?.querySelector(".node-input");
+          if (
+            e.target.closest(".node-input") &&
+            document.activeElement === inputEl
+          ) {
+            return;
+          }
 
-          startNodeDragSession(e, el) {
-            const id = el.id;
-            const n = State.nodes[id];
+          e.preventDefault();
+          e.stopPropagation();
+          let isMoved = false,
+            isCloned = false,
+            targetDropId = null;
+          let actId = id;
+          const isAlt = e.altKey;
 
-            // テキスト編集中は内部要素でのドラッグをテキスト選択として許可
-            const inputEl = Renderer.getNodeEl(id)?.querySelector(".node-input");
+          if (e.shiftKey) {
+            // Shift+クリック: 選択リストへの追加 (ONLY ADD)
+            State.selectedIds.add(id);
+            Renderer.getNodeEl(id)?.classList.add("selected");
+            UIManager.updateMenu();
+            return; // ドラッグ処理には入らない
+          } else if (!State.selectedIds.has(id)) {
+            UIManager.selectOnly(id); // Altに関わらず未選択なら選択して基準にする
+          }
+
+          const baseGroup = State.selectedIds.has(id)
+            ? Array.from(State.selectedIds)
+            : [id];
+          const extendedGroup = new Set();
+          baseGroup.forEach((nodeId) => {
+            extendedGroup.add(nodeId);
+            NodeManager.getDescendants(nodeId).forEach((descId) =>
+              extendedGroup.add(descId),
+            );
+          });
+
+          const group = Array.from(extendedGroup);
+          const initPos = {};
+
+          group.forEach((i) => {
+            if (State.nodes[i]) {
+              initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
+              const targetEl = Renderer.getNodeEl(i);
+              if (targetEl) targetEl.style.zIndex = 3;
+            }
+          });
+
+          let edgeScrollRAF = null;
+          let lastMouseX = e.clientX;
+          let lastMouseY = e.clientY;
+
+          let startWorldX = (e.clientX - State.canvasX) / State.canvasScale;
+          let startWorldY = (e.clientY - State.canvasY) / State.canvasScale;
+
+          const move = (me) => {
+            lastMouseX = me.clientX;
+            lastMouseY = me.clientY;
+
+            const currentWorldX =
+              (me.clientX - State.canvasX) / State.canvasScale;
+            const currentWorldY =
+              (me.clientY - State.canvasY) / State.canvasScale;
+
+            const dx = currentWorldX - startWorldX;
+            const dy = currentWorldY - startWorldY;
+
             if (
-              e.target.closest(".node-input") &&
-              document.activeElement === inputEl
+              Math.abs(dx * State.canvasScale) > 3 ||
+              Math.abs(dy * State.canvasScale) > 3
             ) {
-              return;
+              isMoved = true;
+              UIManager.setDirty(true);
             }
 
-            e.preventDefault();
-            e.stopPropagation();
-            let isMoved = false,
-              isCloned = false,
-              targetDropId = null;
-            let actId = id;
-            const isAlt = e.altKey;
+            if (isAlt && isMoved && !isCloned) {
+              // カーソルがノードから出たら複製
+              const rect = Renderer.getNodeEl(actId)?.getBoundingClientRect();
+              if (
+                rect &&
+                (me.clientX < rect.left ||
+                  me.clientX > rect.right ||
+                  me.clientY < rect.top ||
+                  me.clientY > rect.bottom)
+              ) {
+                const selectedRootsForClone = NodeManager.filterRoots(Array.from(State.selectedIds), State.selectedIds);
+                const clonesRoots = selectedRootsForClone.includes(id)
+                  ? selectedRootsForClone
+                  : [id];
+                const clonedIds = [];
+                clonesRoots.forEach((srcId) => {
+                  const srcN = State.nodes[srcId];
+                  const cId = NodeManager.duplicate(
+                    srcId,
+                    srcN.parentId,
+                    srcN.x,
+                    srcN.y,
+                  );
+                  if (cId) clonedIds.push(cId);
+                });
+                // 複製されたノードを選択
+                actId = clonedIds[0] || id;
+                State.selectedIds.forEach((sid) =>
+                  Renderer.getNodeEl(sid)?.classList.remove("selected"),
+                );
+                State.selectedIds.clear();
+                clonedIds.forEach((cId) => {
+                  State.selectedIds.add(cId);
+                  Renderer.getNodeEl(cId)?.classList.add("selected");
+                });
+                Renderer.updateVisibility();
+                isCloned = true;
 
-            if (e.shiftKey) {
-              // Shift+クリック: 選択リストへの追加 (ONLY ADD)
-              State.selectedIds.add(id);
-              Renderer.getNodeEl(id)?.classList.add("selected");
-              UIManager.updateMenu();
-              return; // ドラッグ処理には入らない
-            } else if (!State.selectedIds.has(id)) {
-              UIManager.selectOnly(id); // Altに関わらず未選択なら選択して基準にする
+                // 新しいグループに入れ替えてポインタズレを修正
+                group.length = 0;
+                clonedIds.forEach((cId) => {
+                  group.push(cId);
+                  NodeManager.getDescendants(cId).forEach((d) =>
+                    group.push(d),
+                  );
+                });
+                group.forEach((i) => {
+                  if (State.nodes[i]) {
+                    initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
+                    const targetEl = Renderer.getNodeEl(i);
+                    if (targetEl) targetEl.style.zIndex = 3;
+                  }
+                });
+                // 基準位置をリセット
+                e.clientX = me.clientX;
+                e.clientY = me.clientY;
+                startWorldX =
+                  (me.clientX - State.canvasX) / State.canvasScale;
+                startWorldY =
+                  (me.clientY - State.canvasY) / State.canvasScale;
+                return; // 次の move から適用
+              } else {
+                return; // 領域外に出るまでは元のノードを移動させない
+              }
             }
-
-            const baseGroup = State.selectedIds.has(id)
-              ? Array.from(State.selectedIds)
-              : [id];
-            const extendedGroup = new Set();
-            baseGroup.forEach((nodeId) => {
-              extendedGroup.add(nodeId);
-              NodeManager.getDescendants(nodeId).forEach((descId) =>
-                extendedGroup.add(descId),
-              );
-            });
-
-            const group = Array.from(extendedGroup);
-            const initPos = {};
 
             group.forEach((i) => {
               if (State.nodes[i]) {
-                initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
-                const targetEl = Renderer.getNodeEl(i);
-                if (targetEl) targetEl.style.zIndex = 3;
+                State.nodes[i].x = initPos[i].x + dx;
+                State.nodes[i].y = initPos[i].y + dy;
+                Renderer.updateNodePos(i);
               }
             });
 
-            let edgeScrollRAF = null;
-            let lastMouseX = e.clientX;
-            let lastMouseY = e.clientY;
-
-            let startWorldX = (e.clientX - State.canvasX) / State.canvasScale;
-            let startWorldY = (e.clientY - State.canvasY) / State.canvasScale;
-
-            const move = (me) => {
-              lastMouseX = me.clientX;
-              lastMouseY = me.clientY;
-
-              const currentWorldX =
-                (me.clientX - State.canvasX) / State.canvasScale;
-              const currentWorldY =
-                (me.clientY - State.canvasY) / State.canvasScale;
-
-              const dx = currentWorldX - startWorldX;
-              const dy = currentWorldY - startWorldY;
-
-              if (
-                Math.abs(dx * State.canvasScale) > 3 ||
-                Math.abs(dy * State.canvasScale) > 3
-              ) {
-                isMoved = true;
-                UIManager.setDirty(true);
-              }
-
-              if (isAlt && isMoved && !isCloned) {
-                // カーソルがノードから出たら複製
-                const rect = Renderer.getNodeEl(actId)?.getBoundingClientRect();
-                if (
-                  rect &&
-                  (me.clientX < rect.left ||
-                    me.clientX > rect.right ||
-                    me.clientY < rect.top ||
-                    me.clientY > rect.bottom)
-                ) {
-                  const selectedRootsForClone = NodeManager.filterRoots(Array.from(State.selectedIds), State.selectedIds);
-                  const clonesRoots = selectedRootsForClone.includes(id)
-                    ? selectedRootsForClone
-                    : [id];
-                  const clonedIds = [];
-                  clonesRoots.forEach((srcId) => {
-                    const srcN = State.nodes[srcId];
-                    const cId = NodeManager.duplicate(
-                      srcId,
-                      srcN.parentId,
-                      srcN.x,
-                      srcN.y,
-                    );
-                    if (cId) clonedIds.push(cId);
-                  });
-                  // 複製されたノードを選択
-                  actId = clonedIds[0] || id;
-                  State.selectedIds.forEach((sid) =>
-                    Renderer.getNodeEl(sid)?.classList.remove("selected"),
-                  );
-                  State.selectedIds.clear();
-                  clonedIds.forEach((cId) => {
-                    State.selectedIds.add(cId);
-                    Renderer.getNodeEl(cId)?.classList.add("selected");
-                  });
-                  Renderer.updateVisibility();
-                  isCloned = true;
-
-                  // 新しいグループに入れ替えてポインタズレを修正
-                  group.length = 0;
-                  clonedIds.forEach((cId) => {
-                    group.push(cId);
-                    NodeManager.getDescendants(cId).forEach((d) =>
-                      group.push(d),
-                    );
-                  });
-                  group.forEach((i) => {
-                    if (State.nodes[i]) {
-                      initPos[i] = { x: State.nodes[i].x, y: State.nodes[i].y };
-                      const targetEl = Renderer.getNodeEl(i);
-                      if (targetEl) targetEl.style.zIndex = 3;
-                    }
-                  });
-                  // 基準位置をリセット
-                  e.clientX = me.clientX;
-                  e.clientY = me.clientY;
-                  startWorldX =
-                    (me.clientX - State.canvasX) / State.canvasScale;
-                  startWorldY =
-                    (me.clientY - State.canvasY) / State.canvasScale;
-                  return; // 次の move から適用
-                } else {
-                  return; // 領域外に出るまでは元のノードを移動させない
-                }
-              }
-
-              group.forEach((i) => {
-                if (State.nodes[i]) {
-                  State.nodes[i].x = initPos[i].x + dx;
-                  State.nodes[i].y = initPos[i].y + dy;
-                  Renderer.updateNodePos(i);
-                }
-              });
-
-              if (isMoved) {
-                if (targetDropId && State.nodes[targetDropId]) {
-                  Renderer.getNodeEl(targetDropId).classList.remove(
-                    "drop-target",
-                  );
-                  targetDropId = null;
-                }
-
-                const mx = (me.clientX - State.canvasX) / State.canvasScale;
-                const my = (me.clientY - State.canvasY) / State.canvasScale;
-
-                for (let i in State.nodes) {
-                  if (group.includes(i) || State.nodes[i].isHidden) continue;
-                  const tn = State.nodes[i];
-                  const tel = Renderer.getNodeEl(i);
-                  if (!tel) continue;
-
-                  const bnds = LayoutEngine._getScaledBounds(i);
-                  if (
-                    mx >= bnds.l &&
-                    mx <= bnds.r &&
-                    my >= bnds.t &&
-                    my <= bnds.b
-                  ) {
-                    targetDropId = i;
-                    tel.classList.add("drop-target");
-                    break;
-                  }
-                }
-                Renderer.updateLines();
-                UIManager.updateMenu();
-              }
-            };
-
-            const edgeScrollLoop = () => {
-              const edgeMargin = 40;
-              const scrollSpeed = 15;
-              let scrolled = false;
-
-              if (lastMouseX < edgeMargin) {
-                State.canvasX += scrollSpeed;
-                scrolled = true;
-              } else if (lastMouseX > window.innerWidth - edgeMargin) {
-                State.canvasX -= scrollSpeed;
-                scrolled = true;
-              }
-
-              if (lastMouseY < edgeMargin) {
-                State.canvasY += scrollSpeed;
-                scrolled = true;
-              } else if (lastMouseY > window.innerHeight - edgeMargin) {
-                State.canvasY -= scrollSpeed;
-                scrolled = true;
-              }
-
-              if (scrolled) {
-                UIManager.updateTransform();
-                Renderer.updateVisibility();
-                const mockEvent = { clientX: lastMouseX, clientY: lastMouseY };
-                move(mockEvent);
-              }
-
-              edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
-            };
-
-            const up = (me) => {
-              cancelAnimationFrame(edgeScrollRAF);
-              document.removeEventListener("mousemove", move);
-              document.removeEventListener("mouseup", up);
-              DragAndDropSubsystem.__activeDragMove = null;
-              DragAndDropSubsystem.__activeDragUp = null;
-
-              group.forEach((i) => {
-                const targetEl = Renderer.getNodeEl(i);
-                if (targetEl) targetEl.style.zIndex = 2;
-              });
-
-              // ドロップ先への親付け替え
+            if (isMoved) {
               if (targetDropId && State.nodes[targetDropId]) {
-                const tId = targetDropId;
-                Renderer.getNodeEl(tId).classList.remove("drop-target");
-
-                // draggedRoots: 選択中ノードのうち、親が選択されていないものだけ
-                const draggedRoots = NodeManager.filterRoots(Array.from(State.selectedIds), State.selectedIds);
-
-                const isLoop = draggedRoots.some(
-                  (rId) =>
-                    tId === rId ||
-                    NodeManager.getDescendants(rId).includes(tId),
+                Renderer.getNodeEl(targetDropId).classList.remove(
+                  "drop-target",
                 );
-
-                if (!isLoop) {
-                  // Ctrl: フラット化（全draggedRootsをtIdの直接の子にする、子孫は構造維持）
-                  // 通常: ツリー構造を維持したまま親付け替え（現行と同じ）
-                  draggedRoots.forEach((rId) => {
-                    const oPId = State.nodes[rId].parentId;
-                    if (oPId !== tId) {
-                      if (oPId) {
-                        State.nodes[oPId].childrenIds = State.nodes[
-                          oPId
-                        ].childrenIds.filter((c) => c !== rId);
-                        if (State.nodes[oPId].childrenIds.length === 0) {
-                          Renderer.getNodeEl(oPId)?.classList.add("is-leaf");
-                        }
-                      } else {
-                        // ルートから子へ移動
-                        State.rootIds = State.rootIds.filter((r) => r !== rId);
-                      }
-                      State.nodes[tId].isCollapsed = false;
-                      State.nodes[rId].parentId = tId;
-                      State.nodes[tId].childrenIds.push(rId);
-                      Renderer.getNodeEl(tId)?.classList.remove("is-leaf");
-                      if (oPId) NodeManager.recalculateColor(oPId);
-
-                      // Ctrl押下時: 子孫の parentId は維持（フラット化はdraggedRootsのみ）
-                      if (me.ctrlKey) {
-                        // draggedRoots の子孫を全て tId の直接の子にする
-                        const desc = NodeManager.getDescendants(rId);
-                        desc.forEach((descId) => {
-                          const dPId = State.nodes[descId].parentId;
-                          // rId 直下の子孫で、元の親 = rId のものだけ tId の子にする
-                          if (dPId === rId) {
-                            State.nodes[descId].parentId = tId;
-                            State.nodes[tId].childrenIds.push(descId);
-                            State.nodes[rId].childrenIds = State.nodes[
-                              rId
-                            ].childrenIds.filter((c) => c !== descId);
-                          }
-                        });
-                      }
-                    }
-                  });
-                  NodeManager.recalculateColor(tId);
-
-                  // X/Y座標をドロップ先の最後尾に揃える
-                  const tNode = State.nodes[tId];
-                  const baseNx =
-                    LayoutEngine._getScaledBounds(tId).r +
-                    CONFIG.layout.marginX * NodeManager.getScale(tId);
-                  const firstRoot = State.nodes[draggedRoots[0]];
-                  const ox = baseNx - firstRoot.x;
-
-                  const otherChildren = tNode.childrenIds.filter(
-                    (c) => !draggedRoots.includes(c),
-                  );
-                  let baseNy = tNode.y;
-                  if (otherChildren.length > 0) {
-                    let mb = -Infinity;
-                    otherChildren.forEach((c) => {
-                      const b = LayoutEngine.getSubtreeBox(c);
-                      if (b.bottom > mb) mb = b.bottom;
-                    });
-                    if (mb === -Infinity) mb = tNode.y;
-                    baseNy =
-                      mb + CONFIG.layout.marginY * NodeManager.getScale(tId);
-                  }
-                  const oy = baseNy - firstRoot.y;
-
-                  group.forEach((n) => {
-                    if (State.nodes[n]) {
-                      State.nodes[n].x += ox;
-                      State.nodes[n].y += oy;
-                      Renderer.updateNodePos(n);
-                    }
-                  });
-                  // スケールを再適用
-                  group.forEach((n) => Renderer.updateNodeScale(n));
-                  isMoved = true;
-
-                  setTimeout(
-                    () => CameraManager.panToNodeIfOffscreen(draggedRoots[0]),
-                    50,
-                  );
-                }
+                targetDropId = null;
               }
 
-              if (isMoved || isCloned) {
-                Renderer.syncDataFromDOM();
+              const mx = (me.clientX - State.canvasX) / State.canvasScale;
+              const my = (me.clientY - State.canvasY) / State.canvasScale;
 
-                // ドロップ時のマウスY座標（キャンバス上の絶対位置）を渡すことで、
-                // ドラッグしたマウスポインタを基準に並び替え（入れ替え判定）を行う
-                // ※ ただし、別のノードにドロップ（対象の親を変更）した時は、常に一番最後尾に配置するため
-                // マウス位置による入れ替え判定（focalY）を送らないようにする
-                const dropY = (me.clientY - State.canvasY) / State.canvasScale;
-                const focalInfo = targetDropId ? null : {
-                  focalId: id,
-                  focalY: dropY,
-                };
-                LayoutEngine.resolveCollisions(group, focalInfo);
+              for (let i in State.nodes) {
+                if (group.includes(i) || State.nodes[i].isHidden) continue;
+                const tn = State.nodes[i];
+                const tel = Renderer.getNodeEl(i);
+                if (!tel) continue;
 
-                UIManager.updateMenu();
-                HistoryManager.save();
-              } else {
-                if (isAlt) {
-                  // Alt+クリック: 選択リストから解除 (ONLY REMOVE)
-                  State.selectedIds.delete(id);
-                  Renderer.getNodeEl(id)?.classList.remove("selected");
-                  UIManager.updateMenu();
-                } else if (!e.shiftKey) {
-                  // クリックのみ: 選択 + テキスト編集開始
-                  UIManager.selectOnly(id);
-                  UIManager.updateMenu();
-                  UIManager.focusToEnd(
-                    Renderer.getNodeEl(id).querySelector(".node-input"),
-                  );
+                const bnds = LayoutEngine._getScaledBounds(i);
+                if (
+                  mx >= bnds.l &&
+                  mx <= bnds.r &&
+                  my >= bnds.t &&
+                  my <= bnds.b
+                ) {
+                  targetDropId = i;
+                  tel.classList.add("drop-target");
+                  break;
                 }
               }
-            };
+              Renderer.updateLines();
+              UIManager.updateMenu();
+            }
+          };
 
-            document.addEventListener("mousemove", move);
-            document.addEventListener("mouseup", up);
-            DragAndDropSubsystem.__activeDragMove = move;
-            DragAndDropSubsystem.__activeDragUp = up;
+          const edgeScrollLoop = () => {
+            const edgeMargin = 40;
+            const scrollSpeed = 15;
+            let scrolled = false;
+
+            if (lastMouseX < edgeMargin) {
+              State.canvasX += scrollSpeed;
+              scrolled = true;
+            } else if (lastMouseX > window.innerWidth - edgeMargin) {
+              State.canvasX -= scrollSpeed;
+              scrolled = true;
+            }
+
+            if (lastMouseY < edgeMargin) {
+              State.canvasY += scrollSpeed;
+              scrolled = true;
+            } else if (lastMouseY > window.innerHeight - edgeMargin) {
+              State.canvasY -= scrollSpeed;
+              scrolled = true;
+            }
+
+            if (scrolled) {
+              UIManager.updateTransform();
+              Renderer.updateVisibility();
+              const mockEvent = { clientX: lastMouseX, clientY: lastMouseY };
+              move(mockEvent);
+            }
+
             edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
-          }
-        };
+          };
 
+          const up = (me) => {
+            cancelAnimationFrame(edgeScrollRAF);
+            document.removeEventListener("mousemove", move);
+            document.removeEventListener("mouseup", up);
+            DragAndDropSubsystem.__activeDragMove = null;
+            DragAndDropSubsystem.__activeDragUp = null;
+
+            group.forEach((i) => {
+              const targetEl = Renderer.getNodeEl(i);
+              if (targetEl) targetEl.style.zIndex = 2;
+            });
+
+            // ドロップ先への親付け替え
+            if (targetDropId && State.nodes[targetDropId]) {
+              const tId = targetDropId;
+              Renderer.getNodeEl(tId).classList.remove("drop-target");
+
+              // draggedRoots: 選択中ノードのうち、親が選択されていないものだけ
+              const draggedRoots = NodeManager.filterRoots(Array.from(State.selectedIds), State.selectedIds);
+
+              const isLoop = draggedRoots.some(
+                (rId) =>
+                  tId === rId ||
+                  NodeManager.getDescendants(rId).includes(tId),
+              );
+
+              if (!isLoop) {
+                // Ctrl: フラット化（全draggedRootsをtIdの直接の子にする、子孫は構造維持）
+                // 通常: ツリー構造を維持したまま親付け替え（現行と同じ）
+                draggedRoots.forEach((rId) => {
+                  const oPId = State.nodes[rId].parentId;
+                  if (oPId !== tId) {
+                    if (oPId) {
+                      State.nodes[oPId].childrenIds = State.nodes[
+                        oPId
+                      ].childrenIds.filter((c) => c !== rId);
+                      if (State.nodes[oPId].childrenIds.length === 0) {
+                        Renderer.getNodeEl(oPId)?.classList.add("is-leaf");
+                      }
+                    } else {
+                      // ルートから子へ移動
+                      State.rootIds = State.rootIds.filter((r) => r !== rId);
+                    }
+                    State.nodes[tId].isCollapsed = false;
+                    State.nodes[rId].parentId = tId;
+                    State.nodes[tId].childrenIds.push(rId);
+                    Renderer.getNodeEl(tId)?.classList.remove("is-leaf");
+                    if (oPId) NodeManager.recalculateColor(oPId);
+
+                    // Ctrl押下時: 子孫の parentId は維持（フラット化はdraggedRootsのみ）
+                    if (me.ctrlKey) {
+                      // draggedRoots の子孫を全て tId の直接の子にする
+                      const desc = NodeManager.getDescendants(rId);
+                      desc.forEach((descId) => {
+                        const dPId = State.nodes[descId].parentId;
+                        // rId 直下の子孫で、元の親 = rId のものだけ tId の子にする
+                        if (dPId === rId) {
+                          State.nodes[descId].parentId = tId;
+                          State.nodes[tId].childrenIds.push(descId);
+                          State.nodes[rId].childrenIds = State.nodes[
+                            rId
+                          ].childrenIds.filter((c) => c !== descId);
+                        }
+                      });
+                    }
+                  }
+                });
+                NodeManager.recalculateColor(tId);
+
+                // X/Y座標をドロップ先の最後尾に揃える
+                const tNode = State.nodes[tId];
+                const baseNx =
+                  LayoutEngine._getScaledBounds(tId).r +
+                  CONFIG.layout.marginX * NodeManager.getScale(tId);
+                const firstRoot = State.nodes[draggedRoots[0]];
+                const ox = baseNx - firstRoot.x;
+
+                const otherChildren = tNode.childrenIds.filter(
+                  (c) => !draggedRoots.includes(c),
+                );
+                let baseNy = tNode.y;
+                if (otherChildren.length > 0) {
+                  let mb = -Infinity;
+                  otherChildren.forEach((c) => {
+                    const b = LayoutEngine.getSubtreeBox(c);
+                    if (b.bottom > mb) mb = b.bottom;
+                  });
+                  if (mb === -Infinity) mb = tNode.y;
+                  baseNy =
+                    mb + CONFIG.layout.marginY * NodeManager.getScale(tId);
+                }
+                const oy = baseNy - firstRoot.y;
+
+                group.forEach((n) => {
+                  if (State.nodes[n]) {
+                    State.nodes[n].x += ox;
+                    State.nodes[n].y += oy;
+                    Renderer.updateNodePos(n);
+                  }
+                });
+                // スケールを再適用
+                group.forEach((n) => Renderer.updateNodeScale(n));
+                isMoved = true;
+
+                setTimeout(
+                  () => CameraManager.panToNodeIfOffscreen(draggedRoots[0]),
+                  50,
+                );
+              }
+            }
+
+            if (isMoved || isCloned) {
+              Renderer.syncDataFromDOM();
+
+              // ドロップ時のマウスY座標（キャンバス上の絶対位置）を渡すことで、
+              // ドラッグしたマウスポインタを基準に並び替え（入れ替え判定）を行う
+              // ※ ただし、別のノードにドロップ（対象の親を変更）した時は、常に一番最後尾に配置するため
+              // マウス位置による入れ替え判定（focalY）を送らないようにする
+              const dropY = (me.clientY - State.canvasY) / State.canvasScale;
+              const focalInfo = targetDropId ? null : {
+                focalId: id,
+                focalY: dropY,
+              };
+              LayoutEngine.resolveCollisions(group, focalInfo);
+
+              UIManager.updateMenu();
+              HistoryManager.save();
+            } else {
+              if (isAlt) {
+                // Alt+クリック: 選択リストから解除 (ONLY REMOVE)
+                State.selectedIds.delete(id);
+                Renderer.getNodeEl(id)?.classList.remove("selected");
+                UIManager.updateMenu();
+              } else if (!e.shiftKey) {
+                // クリックのみ: 選択 + テキスト編集開始
+                UIManager.selectOnly(id);
+                UIManager.updateMenu();
+                UIManager.focusToEnd(
+                  Renderer.getNodeEl(id).querySelector(".node-input"),
+                );
+              }
+            }
+          };
+
+          document.addEventListener("mousemove", move);
+          document.addEventListener("mouseup", up);
+          DragAndDropSubsystem.__activeDragMove = move;
+          DragAndDropSubsystem.__activeDragUp = up;
+          edgeScrollRAF = requestAnimationFrame(edgeScrollLoop);
+        }
+      };
+
+      function setupGlobalClickRouter() {
         // ==================== ノード幅のリサイズ処理 ====================
         DOM.canvasContainer.addEventListener("mousedown", (e) => {
           const isRight = e.target.classList.contains("resize-edge-right");
