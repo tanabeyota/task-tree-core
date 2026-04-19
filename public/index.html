@@ -5466,11 +5466,13 @@
 
                    const cloudTime = data.updatedAt ? data.updatedAt.toDate() : new Date();
                    if (confirm(`☁️ クラウド上に新しいデータがあります (${cloudTime.toLocaleString()})\n\n別の端末で保存した続きから始めますか？\n（現在のローカル未保存データは上書きされます）`)) {
-                      if (FileManager.importJSON(data.json)) {
-                         StorageManager.save();
+                      localStorage.setItem("taskTreeData", data.json);
+                      if (StorageManager.load()) {
+                         Renderer.rebuildAll();
+                         UIManager.selectOnly(null);
                          localStorage.setItem("lastSeenCloudJSON", data.json);
                          UIManager.setDirty(false);
-                         UIManager.showToast("☁️ クラウドからデータを復元しました");
+                         UIManager.showToast("☁️ クラウドから復元しました");
                       }
                    }
                 } else if (!silent) {
