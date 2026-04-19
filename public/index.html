@@ -5596,26 +5596,31 @@
             const generateTaskTree = window.CloudSyncManager.httpsCallable(window.CloudSyncManager.functions, 'generateTaskTree');
             const result = await generateTaskTree({ text });
             
-            const { summary, categories } = result.data;
+            const { summary, tree } = result.data;
             
-            const targetX = targetNode.x + CONFIG.layout.marginX;
-            const targetY = targetNode.y;
+            const startX = targetNode.x + (targetNode.w || 250) + CONFIG.layout.marginX;
+            const startY = targetNode.y;
             const focus = false;
             
             // 1. Create Summary Node as a child of the current node
-            const sumId = NodeManager.create(targetX, targetY, targetId, "【要約】 " + summary, focus);
+            const sumId = NodeManager.create(startX, startY, targetId, "【要約】 " + summary, focus);
             
-            // 2. Create Category Nodes as children, and detail task nodes beneath them
-            if (Array.isArray(categories)) {
-               for (const cat of categories) {
-                  const catId = NodeManager.create(targetX + CONFIG.layout.marginX, targetY, sumId, "📂 " + cat.categoryName, focus);
-                  if (Array.isArray(cat.tasks)) {
-                     for (const task of cat.tasks) {
-                        NodeManager.create(targetX + CONFIG.layout.marginX * 2, targetY, catId, task, focus);
+            // 2. Recursively build the dynamic multi-level hierarchy
+            const buildDynamicTree = (nodeDataList, parentId, depth) => {
+               if (!Array.isArray(nodeDataList)) return;
+               const currentX = startX + CONFIG.layout.marginX * depth;
+               for (const item of nodeDataList) {
+                  if (item.text) {
+                     const text = (item.children && item.children.length > 0) ? "📂 " + item.text : item.text;
+                     const newId = NodeManager.create(currentX, startY, parentId, text, focus);
+                     if (item.children && item.children.length > 0) {
+                         buildDynamicTree(item.children, newId, depth + 1);
                      }
                   }
                }
-            }
+            };
+            
+            buildDynamicTree(tree, sumId, 1);
             
             Renderer.rebuildAll();
             LayoutEngine.resolveCollisions();

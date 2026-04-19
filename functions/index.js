@@ -25,22 +25,26 @@ exports.generateTaskTree = onCall({
   }
 
   // 2. Call Gemini API
-  const prompt = `以下のタスクテキストを分析し、1つの短い「要約」と、実行するための手順を「いくつかのカテゴリ（フェーズ）」に分け、さらにそのカテゴリの中に「具体的な複数のサブタスク」を階層構造で出力してください。
+  const prompt = `以下のタスクテキストを分析し、1つの短い「要約」と、実行するための手順を「階層的なツリー構造」に分解してください。
+テキストの複雑さや情報量に応じて、AI自身が「適切な深さ」の階層（フラットが良いか、深い分類が必要か）を自由に判断してください。
 出力は必ず以下のJSONスキーマに厳密に従ってください。マークダウン（\`\`\`json 等）は含めず、純粋なJSONテキストのみを出力してください。
 
 【出力JSONスキーマ】
 {
   "summary": "タスク名やゴールを象徴する短く具体的な要約",
-  "categories": [
+  "tree": [
     {
-      "categoryName": "フェーズやカテゴリ名（例: 準備、開発、テスト等）",
-      "tasks": [
-        "実行可能なサブタスク1",
-        "実行可能なサブタスク2"
+      "text": "大きなタスクまたはカテゴリ名",
+      "children": [
+        {
+          "text": "詳細タスク1",
+          "children": []
+        }
       ]
     }
   ]
 }
+※ "children" 配列の中には、さらに同じ形式 { "text": "...", "children": [...] } を必要な深さまで自由にネストさせて構いません。これ以上分解する必要がない場合は空配列 [] を指定してください。
 
 【タスクテキスト】
 ${text}`;
@@ -58,7 +62,7 @@ ${text}`;
     const jsonStr = response.text;
     const parsed = JSON.parse(jsonStr);
 
-    if (!parsed.summary || !Array.isArray(parsed.categories)) {
+    if (!parsed.summary || !Array.isArray(parsed.tree)) {
       throw new Error("Invalid output format from Gemini");
     }
 
