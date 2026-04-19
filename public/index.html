@@ -98,6 +98,7 @@
         transition: background-color 0.3s ease;
         user-select: none;
         -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
 
       #canvas-container {
@@ -382,6 +383,7 @@
           box-shadow 0.2s ease,
           opacity 0.2s ease;
         user-select: none;
+        -webkit-touch-callout: none;
       }
 
       .node-box::after {
@@ -3662,7 +3664,7 @@
                 el.style.transform = "scale(1.05)";
                 el.style.boxShadow = "0 8px 16px rgba(0,0,0,0.3)";
                 setTimeout(() => {
-                    el.style.transform = "";
+                    Renderer.updateNodeScale(el.id);
                     el.style.boxShadow = "";
                 }, 200);
 
