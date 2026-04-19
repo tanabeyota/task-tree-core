@@ -1322,6 +1322,7 @@
             lastEditedNodeId: State.lastEditedNodeId,
             arrowTargetId: State.arrowTargetId,
             activeNodeInitialHtml: State.activeNodeInitialHtml,
+            updatedAt: Date.now()
           };
           try {
             localStorage.setItem("taskTreeData", JSON.stringify(data));
@@ -5396,7 +5397,7 @@
         user: null,
         login: async () => { UIManager.showToast("⚠️ オフラインか連携が無効です"); },
         logout: async () => {},
-        pushToCloud: async (dataStr) => {},
+        pushToCloud: async (dataStr, silent = false) => {},
         pullFromCloud: async (silent = false) => {},
       };
 
@@ -5429,7 +5430,8 @@
           window.CloudSyncManager.logout = async () => {
             try { await signOut(auth); } catch(e) { console.error(e); }
           };
-          window.CloudSyncManager.pushToCloud = async (dataStr) => {
+
+          window.CloudSyncManager.pushToCloud = async (dataStr, silent = false) => {
             if (window.CloudSyncManager.user) {
               try {
                 const uid = window.CloudSyncManager.user.uid;
@@ -5437,13 +5439,15 @@
                   json: dataStr,
                   updatedAt: serverTimestamp()
                 });
-                UIManager.showToast("☁️ クラウドへバックアップ完了");
+                if (!silent) UIManager.showToast("☁️ クラウドへバックアップ完了");
+                UIManager.setDirty(false); // background sync finishes
               } catch(e) {
                 console.error("Cloud push failed:", e);
-                UIManager.showToast("⚠️ クラウド保存に失敗しました");
+                if (!silent) UIManager.showToast("⚠️ クラウド保存に失敗しました");
               }
             }
           };
+
           window.CloudSyncManager.pullFromCloud = async (silent = false) => {
             if (window.CloudSyncManager.user) {
               try {
@@ -5453,13 +5457,21 @@
                    const data = docSnap.data();
                    if (!data.json) return;
                    
-                   if (data.json === FileManager.getExportData()) {
+                   let localData = null;
+                   try { localData = JSON.parse(localStorage.getItem("taskTreeData")); } catch(e){}
+                   
+                   const localJSON = localData ? JSON.stringify(localData) : "";
+                   const localTime = localData && localData.updatedAt ? localData.updatedAt : 0;
+                   const cloudData = JSON.parse(data.json);
+                   const cloudTimeNum = cloudData && cloudData.updatedAt ? cloudData.updatedAt : 0;
+                   
+                   if (data.json === localJSON || cloudTimeNum <= localTime) {
                       if(!silent) UIManager.showToast("☁️ クラウドと同期済みです");
                       return;
                    }
 
                    const cloudTime = data.updatedAt ? data.updatedAt.toDate() : new Date();
-                   if (confirm(`☁️ クラウド上に最新データがあります (${cloudTime.toLocaleString()})\n\nローカルに読み込んで上書きしますか？\n（現在のローカル未保存データは消去されます）`)) {
+                   if (confirm(`☁️ クラウド上に新しいデータがあります (${cloudTime.toLocaleString()})\n\n別の端末の続きから始めますか？\n（現在のローカルデータは上書きされます）`)) {
                       if (FileManager.importJSON(data.json)) {
                          StorageManager.save();
                          UIManager.setDirty(false);
