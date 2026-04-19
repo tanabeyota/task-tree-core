@@ -1298,6 +1298,19 @@
             ></div>
           </div>
           <div class="toolbar-divider"></div>
+          <button id="btn-copy-node" class="toolbar-btn" title="コピー (Ctrl+C)" style="color: #4CAF50;">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button id="btn-paste-node" class="toolbar-btn" title="ペースト (Ctrl+V)" style="color: #2196F3;">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+          </button>
+          <div class="toolbar-divider"></div>
           <button id="btn-delete-node" class="toolbar-btn" title="削除 (Delete)" style="color: #e74c3c;">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
               <polyline points="3 6 5 6 21 6"></polyline>
@@ -5545,6 +5558,47 @@
             }
           });
 
+        document.getElementById("btn-copy-node").addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (State.selectedIds.size > 0) {
+            const mockEvent = {
+              preventDefault: () => {},
+              shiftKey: false,
+              clipboardData: {
+                 setData: (type, text) => {
+                     if ((type === 'text/plain' || type === 'text') && navigator.clipboard) {
+                         navigator.clipboard.writeText(text).catch(()=>{});
+                     }
+                 }
+              }
+            };
+            ClipboardManager.handleCopy(Array.from(State.selectedIds), mockEvent);
+            UIManager.showToast("コピーしました (ペースト可能です)");
+          }
+        });
+
+        document.getElementById("btn-paste-node").addEventListener("pointerdown", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          let text = "";
+          try {
+             text = await navigator.clipboard.readText();
+          } catch(err) {
+             if (State.internalClipboard) text = State.internalClipboard.markdownText;
+          }
+          if (!text) {
+             UIManager.showToast("貼り付ける内容がありません");
+             return;
+          }
+          
+          const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+          pasteEvent.clipboardData = {
+              getData: () => text
+          };
+          document.dispatchEvent(pasteEvent);
+        });
+        
         document.getElementById("btn-delete-node").addEventListener("pointerdown", (e) => {
           e.preventDefault();
           e.stopPropagation();
