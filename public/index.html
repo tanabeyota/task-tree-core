@@ -3686,13 +3686,13 @@
             State.canvasX = mx - ((mx - State.canvasX) * ns) / State.canvasScale;
             State.canvasY = my - ((my - State.canvasY) * ns) / State.canvasScale;
             State.canvasScale = ns;
-            Renderer.updateCanvasTransform();
+            UIManager.updateTransform();
             UIManager.updateTheme();
           } else if (isPanning && e.touches.length === 1 && !isLongPressDragging) {
             e.preventDefault();
             State.canvasX = startCanvasX + (e.touches[0].clientX - startPanX);
             State.canvasY = startCanvasY + (e.touches[0].clientY - startPanY);
-            Renderer.updateCanvasTransform();
+            UIManager.updateTransform();
             UIManager.updateTheme();
           } else if (isLongPressDragging) {
              e.preventDefault();
