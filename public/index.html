@@ -5439,6 +5439,7 @@
                   json: dataStr,
                   updatedAt: serverTimestamp()
                 });
+                localStorage.setItem("lastSeenCloudJSON", dataStr);
                 if (!silent) UIManager.showToast("☁️ クラウドへバックアップ完了");
                 UIManager.setDirty(false); // background sync finishes
               } catch(e) {
@@ -5457,23 +5458,17 @@
                    const data = docSnap.data();
                    if (!data.json) return;
                    
-                   let localData = null;
-                   try { localData = JSON.parse(localStorage.getItem("taskTreeData")); } catch(e){}
-                   
-                   const localJSON = localData ? JSON.stringify(localData) : "";
-                   const localTime = localData && localData.updatedAt ? localData.updatedAt : 0;
-                   const cloudData = JSON.parse(data.json);
-                   const cloudTimeNum = cloudData && cloudData.updatedAt ? cloudData.updatedAt : 0;
-                   
-                   if (data.json === localJSON || cloudTimeNum <= localTime) {
-                      if(!silent) UIManager.showToast("☁️ クラウドと同期済みです");
+                   const lastSeenJSON = localStorage.getItem("lastSeenCloudJSON");
+                   if (data.json === lastSeenJSON) {
+                      if (!silent) UIManager.showToast("☁️ クラウドと同期済みです");
                       return;
                    }
 
                    const cloudTime = data.updatedAt ? data.updatedAt.toDate() : new Date();
-                   if (confirm(`☁️ クラウド上に新しいデータがあります (${cloudTime.toLocaleString()})\n\n別の端末の続きから始めますか？\n（現在のローカルデータは上書きされます）`)) {
+                   if (confirm(`☁️ クラウド上に新しいデータがあります (${cloudTime.toLocaleString()})\n\n別の端末で保存した続きから始めますか？\n（現在のローカル未保存データは上書きされます）`)) {
                       if (FileManager.importJSON(data.json)) {
                          StorageManager.save();
+                         localStorage.setItem("lastSeenCloudJSON", data.json);
                          UIManager.setDirty(false);
                          UIManager.showToast("☁️ クラウドからデータを復元しました");
                       }
