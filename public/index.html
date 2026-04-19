@@ -3334,6 +3334,12 @@
         },
 
         async save() {
+          if (window.CloudSyncManager && window.CloudSyncManager.user) {
+            const data = this.getExportData();
+            window.CloudSyncManager.pushToCloud(data);
+            return;
+          }
+
           if (this._fileHandle) {
             try {
               const data = this.getExportData();
