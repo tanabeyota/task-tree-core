@@ -5606,13 +5606,15 @@
             const sumId = NodeManager.create(startX, startY, targetId, "【要約】 " + summary, focus);
             
             // 2. Recursively build the dynamic multi-level hierarchy
+            let globalYOffset = 50; // Start placing children below the summary node
             const buildDynamicTree = (nodeDataList, parentId, depth) => {
                if (!Array.isArray(nodeDataList)) return;
                const currentX = startX + CONFIG.layout.marginX * depth;
                for (const item of nodeDataList) {
                   if (item.text) {
                      const text = (item.children && item.children.length > 0) ? "📂 " + item.text : item.text;
-                     const newId = NodeManager.create(currentX, startY, parentId, text, focus);
+                     const newId = NodeManager.create(currentX, startY + globalYOffset, parentId, text, focus);
+                     globalYOffset += 50; // increment Y offset for every new node generated
                      if (item.children && item.children.length > 0) {
                          buildDynamicTree(item.children, newId, depth + 1);
                      }
