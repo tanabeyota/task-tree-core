@@ -3667,10 +3667,17 @@
                 }, 200);
 
                 // Re-hydrate event to simulate mousedown
-                e.clientX = e.touches[0].clientX;
-                e.clientY = e.touches[0].clientY;
-                e.button = 0;
-                DragAndDropSubsystem.startNodeDragSession(e, el);
+                const mockEvent = {
+                    preventDefault: () => {},
+                    stopPropagation: () => {},
+                    clientX: startPanX,
+                    clientY: startPanY,
+                    button: 0,
+                    target: el,
+                    shiftKey: false,
+                    altKey: false
+                };
+                DragAndDropSubsystem.startNodeDragSession(mockEvent, el);
               }, 400); // 400ms long press delay
             }
           }
