@@ -5598,31 +5598,44 @@
             
             const { summary, tree } = result.data;
             
-            const startX = targetNode.x + (targetNode.w || 250) + CONFIG.layout.marginX;
+            const startX = targetNode.x + CONFIG.layout.marginX;
             const startY = targetNode.y;
             const focus = false;
             
             // 1. Create Summary Node as a child of the current node
             const sumId = NodeManager.create(startX, startY, targetId, "【要約】 " + summary, focus);
             
-            // 2. Recursively build the dynamic multi-level hierarchy
-            let globalYOffset = 50; // Start placing children below the summary node
-            const buildDynamicTree = (nodeDataList, parentId, depth) => {
+            Renderer.rebuildAll();
+            LayoutEngine.resolveCollisions();
+            await new Promise(r => setTimeout(r, 100)); // Initial UI visually register
+            
+            // 2. Recursively build the dynamic multi-level hierarchy with UI growing animation delays
+            const buildDynamicTree = async (nodeDataList, parentId, depth) => {
                if (!Array.isArray(nodeDataList)) return;
-               const currentX = startX + CONFIG.layout.marginX * depth;
+               
                for (const item of nodeDataList) {
                   if (item.text) {
+                     const pNode = State.nodes[parentId];
+                     const currentX = pNode ? pNode.x + CONFIG.layout.marginX : startX;
+                     const currentY = pNode ? pNode.y : startY;
+
                      const text = (item.children && item.children.length > 0) ? "📂 " + item.text : item.text;
-                     const newId = NodeManager.create(currentX, startY + globalYOffset, parentId, text, focus);
-                     globalYOffset += 50; // increment Y offset for every new node generated
+                     const newId = NodeManager.create(currentX, currentY, parentId, text, focus);
+                     
+                     // Force physics check immediately to fan out the nodes organically while waiting
+                     Renderer.rebuildAll();
+                     LayoutEngine.resolveCollisions();
+                     
+                     await new Promise(res => setTimeout(res, 80)); // 80ms satisfying expansion animation per node
+                     
                      if (item.children && item.children.length > 0) {
-                         buildDynamicTree(item.children, newId, depth + 1);
+                         await buildDynamicTree(item.children, newId, depth + 1);
                      }
                   }
                }
             };
             
-            buildDynamicTree(tree, sumId, 1);
+            await buildDynamicTree(tree, sumId, 1);
             
             Renderer.rebuildAll();
             LayoutEngine.resolveCollisions();
