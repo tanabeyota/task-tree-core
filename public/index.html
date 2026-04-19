@@ -5598,17 +5598,17 @@
             
             const { summary, children } = result.data;
             
+            const targetX = targetNode.x + CONFIG.layout.marginX;
+            const targetY = targetNode.y;
             const focus = false;
             
             // 1. Create Summary Node as a child of the current node
-            const sumId = NodeManager.create(targetId, undefined, focus);
-            State.nodes[sumId].html = "【要約】 " + summary;
+            const sumId = NodeManager.create(targetX, targetY, targetId, "【要約】 " + summary, focus);
             
             // 2. Create breakdown task nodes as children of the new Summary Node
             if (Array.isArray(children)) {
                for (const task of children) {
-                  const tId = NodeManager.create(sumId, undefined, focus);
-                  State.nodes[tId].html = task;
+                  NodeManager.create(targetX + CONFIG.layout.marginX, targetY, sumId, task, focus);
                }
             }
             
