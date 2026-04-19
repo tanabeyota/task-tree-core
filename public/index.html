@@ -2,6 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>task tree -アイデアが弾け、実る場所-</title>
     <meta
       name="description"
@@ -982,6 +983,74 @@
         filter: invert(1);
         cursor: pointer;
       }
+      /* ==========================================
+           スマホ（モバイル）レスポンシブ対応
+        ========================================== */
+      #mobile-action-bar {
+        display: none;
+      }
+      @media (max-width: 768px) {
+        #floating-menu {
+          top: auto;
+          bottom: 20px;
+          left: 10px;
+          right: 10px;
+          width: auto;
+          overflow-x: auto;
+          flex-wrap: nowrap;
+          box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+          border-radius: 12px;
+          z-index: 1000;
+        }
+        #priority-sidebar {
+          top: auto;
+          bottom: 80px;
+          right: 10px;
+          height: 40vh;
+          max-height: 300px;
+          z-index: 999;
+          transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        #priority-sidebar.minimized {
+          transform: translateY(20px);
+          pointer-events: none;
+        }
+        #priority-sidebar.minimized #priority-sidebar-count {
+          pointer-events: auto;
+          transform: translateY(-20px);
+        }
+        
+        #mobile-action-bar {
+          display: flex;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          background: var(--menu-bg);
+          border-top: 1px solid var(--border-color);
+          padding: 8px;
+          gap: 8px;
+          z-index: 2000;
+          overflow-x: auto;
+          box-shadow: 0 -4px 10px rgba(0,0,0,0.1);
+          justify-content: center;
+          transition: transform 0.2s ease;
+          transform: translateY(100%);
+        }
+        #mobile-action-bar.visible {
+          transform: translateY(0);
+        }
+        .mob-btn {
+          flex: 0 0 auto;
+          background: var(--node-bg);
+          border: 1px solid var(--border-color);
+          color: var(--text-main);
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: bold;
+          font-size: 14px;
+        }
+      }
     </style>
   </head>
 
@@ -1251,6 +1320,13 @@
     <div id="toast"></div>
     <div id="save-indicator" title="未保存の変更があります"></div>
 
+    <div id="mobile-action-bar">
+      <button class="mob-btn" id="mob-outdent">🔼 戻す</button>
+      <button class="mob-btn" id="mob-indent">🔽 下げる</button>
+      <button class="mob-btn" id="mob-add-sibling">➕⬇️ 兄弟</button>
+      <button class="mob-btn" id="mob-add-child">➕➡️ 子</button>
+    </div>
+
     <script>
       // ==========================================
       // 1. 設定と状態 (Configuration & State)
@@ -1290,6 +1366,7 @@
         searchNext: document.getElementById("search-next"),
         searchClose: document.getElementById("search-close"),
         toast: document.getElementById("toast"),
+        mobileActionBar: document.getElementById("mobile-action-bar"),
       };
 
       const State = {
@@ -3553,6 +3630,120 @@
         setupTextInputInteractions();
         setupKeyboardInteractions();
         setupSidebarInteractions();
+        setupMobileActions();
+        setupTouchInteractions();
+      }
+
+      function setupTouchInteractions() {
+        let touchStartDist = 0;
+        let isPinchZooming = false;
+        let isPanning = false;
+        let startPanX = 0, startPanY = 0;
+        let startCanvasX = 0, startCanvasY = 0;
+
+        DOM.canvasContainer.addEventListener("touchstart", (e) => {
+          const el = e.target.closest(".node-box");
+          if (e.touches.length === 2 && e.target.closest("#viewport")) {
+            e.preventDefault();
+            isPinchZooming = true;
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            touchStartDist = Math.hypot(dx, dy);
+            // Simulate the middle/right drag zoom base states
+            window.rightDragStartScale = State.canvasScale; // Using global/closure variable conceptually used in canvas interactions
+            isPanning = false; // ensure pan is cancelled
+          } else if (e.touches.length === 1) {
+            if (e.target === DOM.viewport || e.target === DOM.canvasContainer || e.target === DOM.svgLayer) {
+              e.preventDefault();
+              isPanning = true;
+              startPanX = e.touches[0].clientX;
+              startPanY = e.touches[0].clientY;
+              startCanvasX = State.canvasX;
+              startCanvasY = State.canvasY;
+            } else if (el && e.target.tagName !== "BUTTON" && !e.target.classList.contains("resize-edge-right")) {
+              const inputEl = el.querySelector(".node-input");
+              if (e.target.closest(".node-input") && document.activeElement === inputEl) {
+                return; // editing text, allow default
+              }
+              // Simulate mousedown for dragging
+              e.clientX = e.touches[0].clientX;
+              e.clientY = e.touches[0].clientY;
+              e.button = 0;
+              DragAndDropSubsystem.startNodeDragSession(e, el);
+            }
+          }
+        }, {passive: false});
+
+        window.addEventListener("touchmove", (e) => {
+          if (isPinchZooming && e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            // Fallback rightDragStartScale if window.rightDragStartScale doesn't resolve (var scope trick)
+            const baseScale = window.rightDragStartScale || State.canvasScale;
+            let ns = baseScale * (dist / touchStartDist);
+            ns = Math.max(0.005, Math.min(ns, 50));
+
+            const mx = window.innerWidth / 2;
+            const my = window.innerHeight / 2;
+            State.canvasX = mx - ((mx - State.canvasX) * ns) / State.canvasScale;
+            State.canvasY = my - ((my - State.canvasY) * ns) / State.canvasScale;
+            State.canvasScale = ns;
+            Renderer.updateCanvasTransform();
+            UIManager.updateTheme();
+          } else if (isPanning && e.touches.length === 1) {
+            e.preventDefault();
+            State.canvasX = startCanvasX + (e.touches[0].clientX - startPanX);
+            State.canvasY = startCanvasY + (e.touches[0].clientY - startPanY);
+            Renderer.updateCanvasTransform();
+            UIManager.updateTheme();
+          }
+        }, {passive: false});
+
+        window.addEventListener("touchend", (e) => {
+          if (e.touches.length < 2 && isPinchZooming) {
+            isPinchZooming = false;
+          }
+          if (e.touches.length === 0 && isPanning) {
+            isPanning = false;
+          }
+        });
+      }
+
+      function setupMobileActions() {
+        const createKeyEvent = (key, ctrlKey = false, shiftKey = false) => {
+          return new KeyboardEvent("keydown", {
+            key: key,
+            code: key === "Enter" ? "Enter" : key === "Tab" ? "Tab" : "",
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: ctrlKey,
+            metaKey: ctrlKey, 
+            shiftKey: shiftKey
+          });
+        };
+
+        const triggerAction = (e, key, ctrlKey, shiftKey) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const target = document.activeElement;
+          if (target && target.classList.contains("node-input")) {
+            target.dispatchEvent(createKeyEvent(key, ctrlKey, shiftKey));
+          }
+        };
+
+        document.getElementById("mob-outdent").addEventListener("mousedown", (e) => triggerAction(e, "Tab", false, true));
+        document.getElementById("mob-outdent").addEventListener("touchstart", (e) => triggerAction(e, "Tab", false, true), {passive: false});
+
+        document.getElementById("mob-indent").addEventListener("mousedown", (e) => triggerAction(e, "Tab", false, false));
+        document.getElementById("mob-indent").addEventListener("touchstart", (e) => triggerAction(e, "Tab", false, false), {passive: false});
+
+        document.getElementById("mob-add-sibling").addEventListener("mousedown", (e) => triggerAction(e, "Enter", false, false));
+        document.getElementById("mob-add-sibling").addEventListener("touchstart", (e) => triggerAction(e, "Enter", false, false), {passive: false});
+
+        document.getElementById("mob-add-child").addEventListener("mousedown", (e) => triggerAction(e, "Enter", true, false));
+        document.getElementById("mob-add-child").addEventListener("touchstart", (e) => triggerAction(e, "Enter", true, false), {passive: false});
       }
 
       function setupCanvasInteractions() {
@@ -4613,11 +4804,22 @@
           const nodeBox = e.target.closest(".node-box");
           if (e.target.classList.contains("node-input") && nodeBox) {
             State.lastEditedNodeId = nodeBox.id;
+            if (window.innerWidth <= 768) {
+              DOM.mobileActionBar.classList.add("visible");
+            }
           }
         });
 
         DOM.canvasContainer.addEventListener("focusout", (e) => {
-          if (e.target.classList.contains("node-input")) HistoryManager.save();
+          if (e.target.classList.contains("node-input")) {
+            HistoryManager.save();
+            // Use setTimeout to avoid hiding immediately if focus jumps to the action bar buttons
+            setTimeout(() => {
+              if (!document.activeElement.closest("#mobile-action-bar") && !document.activeElement.classList.contains("node-input")) {
+                DOM.mobileActionBar.classList.remove("visible");
+              }
+            }, 50);
+          }
         });
 
         document.addEventListener("selectionchange", () =>
