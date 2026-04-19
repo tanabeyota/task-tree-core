@@ -419,7 +419,7 @@
         z-index: 6;
       }
 
-      .node-input { touch-action: none;
+      .node-input { touch-action: auto !important;
         border: none;
         outline: none;
         background: transparent;
@@ -3687,6 +3687,11 @@
             if (e.target.tagName === "BUTTON" || e.target.classList.contains("resize-edge-right")) return;
 
             if (el) {
+                if (document.activeElement?.classList.contains("node-input") && e.target === document.activeElement) {
+                    isNodeDragging = false;
+                    isPanning = false;
+                    return;
+                }
                 // DO NOT preventDefault! Allow native focus to work on iOS!
                 isNodeDragging = true;
                 isPanning = false;
