@@ -43,7 +43,7 @@ ${text}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.0-flash-lite", // fallback to a known model since 3.1 doesn't exist
       contents: prompt,
       config: {
           responseMimeType: "application/json",
@@ -61,6 +61,6 @@ ${text}`;
     return parsed;
   } catch (error) {
     console.error("Gemini API Error:", error);
-    throw new HttpsError("internal", "タスクの分解処理中にエラーが発生しました", error.message);
+    throw new HttpsError("internal", `APIエラー: ${error.message}`);
   }
 });
