@@ -1277,6 +1277,14 @@
             </div>
           </div>
           <div class="toolbar-divider"></div>
+          <button id="btn-ai-breakdown" class="toolbar-btn" title="AIタスク分解 (✨)" style="display: none; color: #E91E63;" >
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+          </button>
+          <div class="toolbar-divider"></div>
           <div id="menu-colors">
             <div
               class="color-btn"
@@ -5563,6 +5571,57 @@
             }
           });
 
+                document.getElementById("btn-ai-breakdown").addEventListener("pointerdown", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (!window.CloudSyncManager || !window.CloudSyncManager.user) {
+            UIManager.showToast("ログインしているユーザーのみAI機能を利用できます。");
+            return;
+          }
+
+          if (State.selectedIds.size === 0) return;
+          const targetId = Array.from(State.selectedIds)[0];
+          const targetNode = State.nodes[targetId];
+
+          const text = targetNode.html || "";
+          if (!text || text.trim() === "") {
+             UIManager.showToast("テキストが入力されていません");
+             return;
+          }
+          
+          UIManager.showToast("✨ AIが分解中...");
+
+          try {
+            const generateTaskTree = window.CloudSyncManager.httpsCallable(window.CloudSyncManager.functions, 'generateTaskTree');
+            const result = await generateTaskTree({ text });
+            
+            const { summary, children } = result.data;
+            
+            const focus = false;
+            
+            // 1. Create Summary Node as a child of the current node
+            const sumId = NodeManager.create(targetId, undefined, focus);
+            State.nodes[sumId].html = "【要約】 " + summary;
+            
+            // 2. Create breakdown task nodes as children of the new Summary Node
+            if (Array.isArray(children)) {
+               for (const task of children) {
+                  const tId = NodeManager.create(sumId, undefined, focus);
+                  State.nodes[tId].html = task;
+               }
+            }
+            
+            Renderer.rebuildAll();
+            LayoutEngine.resolveCollisions();
+            HistoryManager.save();
+            UIManager.showToast("分解完了！");
+          } catch(err) {
+            console.error(err);
+            UIManager.showToast("⚠️ AIエラー: " + err.message);
+          }
+        });
+        
         document.getElementById("btn-copy-node").addEventListener("pointerdown", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -5714,10 +5773,11 @@
 
       (async () => {
         try {
-          const [{ initializeApp }, { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }, { getFirestore, doc, setDoc, getDoc, serverTimestamp }] = await Promise.all([
+          const [{ initializeApp }, { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut }, { getFirestore, doc, setDoc, getDoc, serverTimestamp }, { getFunctions, httpsCallable }] = await Promise.all([
             import("https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js"),
             import("https://www.gstatic.com/firebasejs/10.10.0/firebase-auth.js"),
-            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js")
+            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js"),
+            import("https://www.gstatic.com/firebasejs/10.10.0/firebase-functions.js")
           ]);
 
           const firebaseConfig = {
@@ -5732,6 +5792,9 @@
           const app = initializeApp(firebaseConfig);
           const auth = getAuth(app);
           const db = getFirestore(app);
+          const functions = getFunctions(app, "asia-northeast1");
+          window.CloudSyncManager.functions = functions;
+          window.CloudSyncManager.httpsCallable = httpsCallable;
           const provider = new GoogleAuthProvider();
 
           window.CloudSyncManager.offline = false;
@@ -5822,6 +5885,9 @@
 
           onAuthStateChanged(auth, (user) => {
             window.CloudSyncManager.user = user;
+                if (document.getElementById("btn-ai-breakdown")) {
+                    document.getElementById("btn-ai-breakdown").style.display = user ? "inline-flex" : "none";
+                }
             UIManager.updateAuthStatus(user);
             if (user) {
                window.CloudSyncManager.pullFromCloud(true);
