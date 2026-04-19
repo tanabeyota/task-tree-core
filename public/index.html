@@ -3611,19 +3611,19 @@
         let touchStartDist = 0;
         let isPinchZooming = false;
         let isPanning = false;
+        let isNodeDragging = false;
         let startPanX = 0, startPanY = 0;
         let startCanvasX = 0, startCanvasY = 0;
-
-        let longPressTimer = null;
-        let isLongPressDragging = false;
-        let possibleDragEl = null;
 
         DOM.viewport.addEventListener("touchstart", (e) => {
           if (e.touches.length === 2 && e.target.closest("#viewport")) {
             e.preventDefault();
-            clearTimeout(longPressTimer);
+            if (isNodeDragging && DragAndDropSubsystem.__activeDragUp) {
+                DragAndDropSubsystem.__activeDragUp({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+            }
             isPinchZooming = true;
             isPanning = false;
+            isNodeDragging = false;
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             touchStartDist = Math.hypot(dx, dy);
@@ -3631,70 +3631,43 @@
           } else if (e.touches.length === 1) {
             const el = e.target.closest(".node-box");
             
-            // Allow native buttons/resizers
             if (e.target.tagName === "BUTTON" || e.target.classList.contains("resize-edge-right")) return;
 
-            // Prevent native ghost click processing / scroll
             e.preventDefault(); 
             if (document.activeElement && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
                 document.activeElement.blur();
             }
 
-            // Immediately ready to pan, ALWAYS
-            isPanning = true;
-            startPanX = e.touches[0].clientX;
-            startPanY = e.touches[0].clientY;
-            startCanvasX = State.canvasX;
-            startCanvasY = State.canvasY;
-
             if (el) {
-              possibleDragEl = el;
-              longPressTimer = setTimeout(() => {
-                // Long press fired! Cancel pan -> promote to drag
+                isNodeDragging = true;
                 isPanning = false;
-                isLongPressDragging = true;
-                
-                // Select Node
-                if (document.activeElement) document.activeElement.blur();
-                UIManager.selectOnly(el.id);
-                UIManager.updateMenu();
-                
-                // Visual feedback (simulating vibration/pop)
-                if(navigator.vibrate) navigator.vibrate(50);
-                el.style.transform = "scale(1.05)";
-                el.style.boxShadow = "0 8px 16px rgba(0,0,0,0.3)";
-                setTimeout(() => {
-                    Renderer.updateNodeScale(el.id);
-                    el.style.boxShadow = "";
-                }, 200);
 
-                // Re-hydrate event to simulate mousedown
                 const mockEvent = {
                     preventDefault: () => {},
                     stopPropagation: () => {},
-                    clientX: startPanX,
-                    clientY: startPanY,
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY,
                     button: 0,
                     target: el,
                     shiftKey: false,
                     altKey: false
                 };
                 DragAndDropSubsystem.startNodeDragSession(mockEvent, el);
-              }, 400); // 400ms long press delay
+                
+                startPanX = e.touches[0].clientX;
+                startPanY = e.touches[0].clientY;
+            } else {
+                isPanning = true;
+                isNodeDragging = false;
+                startPanX = e.touches[0].clientX;
+                startPanY = e.touches[0].clientY;
+                startCanvasX = State.canvasX;
+                startCanvasY = State.canvasY;
             }
           }
         }, {passive: false});
 
         window.addEventListener("touchmove", (e) => {
-          if (e.touches.length === 1 && possibleDragEl && !isLongPressDragging) {
-             const dx = e.touches[0].clientX - startPanX;
-             const dy = e.touches[0].clientY - startPanY;
-             if (Math.hypot(dx, dy) > 10) {
-                 clearTimeout(longPressTimer);
-                 possibleDragEl = null; // definitively a pan
-             }
-          }
-
           if (isPinchZooming && e.touches.length === 2) {
             e.preventDefault();
             const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -3711,13 +3684,13 @@
             State.canvasScale = ns;
             UIManager.updateTransform();
             UIManager.updateTheme();
-          } else if (isPanning && e.touches.length === 1 && !isLongPressDragging) {
+          } else if (isPanning && e.touches.length === 1) {
             e.preventDefault();
             State.canvasX = startCanvasX + (e.touches[0].clientX - startPanX);
             State.canvasY = startCanvasY + (e.touches[0].clientY - startPanY);
             UIManager.updateTransform();
             UIManager.updateTheme();
-          } else if (isLongPressDragging) {
+          } else if (isNodeDragging) {
              e.preventDefault();
              if (DragAndDropSubsystem.__activeDragMove) {
                  DragAndDropSubsystem.__activeDragMove({
@@ -3728,48 +3701,30 @@
           }
         }, {passive: false});
 
-        window.addEventListener("touchend", (e) => {
-          clearTimeout(longPressTimer);
-
-          // Fast tap -> Edit text
-          if (possibleDragEl && !isLongPressDragging && e.touches.length === 0) {
-             if (Math.hypot(e.changedTouches[0].clientX - startPanX, e.changedTouches[0].clientY - startPanY) < 10) {
-                 const inputEl = possibleDragEl.querySelector(".node-input");
-                 if (inputEl) {
-                     UIManager.selectOnly(possibleDragEl.id);
-                     UIManager.focusToEnd(inputEl);
-                 }
-             }
-          }
-
-          if (isLongPressDragging) {
-             if (DragAndDropSubsystem.__activeDragUp) {
-                 DragAndDropSubsystem.__activeDragUp({
-                     clientX: e.changedTouches[0].clientX,
-                     clientY: e.changedTouches[0].clientY,
-                 });
-             }
-             isLongPressDragging = false;
-          }
-
-          possibleDragEl = null;
-        });
-
-        window.addEventListener("touchcancel", (e) => {
-          clearTimeout(longPressTimer);
-          if (isLongPressDragging) {
+        const cancelOrEndDrag = (e) => {
+           if (isNodeDragging) {
              if (DragAndDropSubsystem.__activeDragUp) {
                  DragAndDropSubsystem.__activeDragUp({
                      clientX: e.changedTouches?.[0]?.clientX || startPanX,
                      clientY: e.changedTouches?.[0]?.clientY || startPanY,
                  });
              }
-             isLongPressDragging = false;
+             isNodeDragging = false;
+           }
+        };
+
+        window.addEventListener("touchend", (e) => {
+          cancelOrEndDrag(e);
+          if (e.touches.length < 2 && isPinchZooming) {
+            isPinchZooming = false;
           }
-          possibleDragEl = null;
+          if (e.touches.length === 0 && isPanning) {
+            isPanning = false;
+          }
+        });
 
-          possibleDragEl = null;
-
+        window.addEventListener("touchcancel", (e) => {
+          cancelOrEndDrag(e);
           if (e.touches.length < 2 && isPinchZooming) {
             isPinchZooming = false;
           }
