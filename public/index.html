@@ -3679,6 +3679,7 @@
                 startPanY = e.touches[0].clientY;
             } else {
                 // DO NOT preventDefault on touchstart! Let click propagate to background!
+                UIManager.selectOnly(null);
                 isPanning = true;
                 isNodeDragging = false;
                 startPanX = e.touches[0].clientX;
