@@ -1016,9 +1016,9 @@
           transform: none !important;
         }
         #priority-sidebar {
-          top: 70px;
+          top: 20px;
           bottom: auto;
-          right: 10px;
+          right: 20px;
           height: 40vh;
           max-height: 300px;
           z-index: 999;
@@ -2479,6 +2479,15 @@
           if ((c === "blue" || c === "green") && n.priority > 0) {
             this.setPriority(id, 0);
             setTimeout(() => SidebarManager.update(), 0);
+          }
+
+          if (c === "blue") {
+             n.deadline = "";
+             n.duration = 0;
+             n.waitHours = 0;
+             n.waitStartTime = null;
+             n.effectiveStartTimeMs = null;
+             n.deadlineMs = null;
           }
 
           if (c === "red") {
