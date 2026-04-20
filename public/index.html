@@ -1610,6 +1610,30 @@
             gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
             osc.connect(gain); gain.connect(this.ctx.destination);
             osc.start(t); osc.stop(t + 0.15);
+        },
+
+        // ==========================================
+        // 8. ノード削除時（カコッ）
+        // ==========================================
+        playNodeDelete() {
+            if (this.muted) return;
+            this.init();
+            const t = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            osc.type = 'square'; // 硬い音色（木のブロック感）
+            osc.frequency.setValueAtTime(800, t); 
+            osc.frequency.exponentialRampToValueAtTime(100, t + 0.03); 
+            
+            // 全体のマイルドなバランスに合わせて 0.5 -> 0.15 に音量を低減
+            gain.gain.setValueAtTime(0.15, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.03);
+            
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.04);
         }
       };
 
@@ -5616,6 +5640,7 @@
                 canDelete = false;
             });
             if (!canDelete) return;
+            if (window.SoundEngine) SoundEngine.playNodeDelete();
             State.selectedIds.forEach((id) => NodeManager.delete(id));
             State.selectedIds.clear();
             HistoryManager.save();
@@ -6057,6 +6082,7 @@
                 canDelete = false;
             });
             if (canDelete) {
+              if (window.SoundEngine) SoundEngine.playNodeDelete();
               State.selectedIds.forEach((id) => NodeManager.delete(id));
               State.selectedIds.clear();
               HistoryManager.save();
