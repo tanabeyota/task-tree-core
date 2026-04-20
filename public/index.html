@@ -2970,7 +2970,7 @@
                 if (bCurr.right + m >= bBelow.left && bCurr.left - m <= bBelow.right) {
                   const overlap = bCurr.bottom + m - bBelow.top;
                   if (Math.abs(overlap) > 0.5) {
-                    if (p === "root" && overlap < -0.5) continue; // Do not magnetically pull independent roots
+                    if (overlap < -0.5) continue; // 手動で動かした距離を保つため引き寄せない
                     [sibs[i], ...NodeManager.getDescendants(sibs[i])].forEach(
                       (n) => {
                         State.nodes[n].y -= overlap;
@@ -2989,7 +2989,7 @@
                 if (bCurr.right + m >= bAbove.left && bCurr.left - m <= bAbove.right) {
                   const overlap = bAbove.bottom - (bCurr.top - m);
                   if (Math.abs(overlap) > 0.5) {
-                    if (p === "root" && overlap < -0.5) continue; // Do not magnetically pull independent roots
+                    if (overlap < -0.5) continue; // 手動で動かした距離を保つため引き寄せない
                     [sibs[i], ...NodeManager.getDescendants(sibs[i])].forEach(
                       (n) => {
                         State.nodes[n].y += overlap;
