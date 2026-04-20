@@ -254,24 +254,23 @@
         width: 44px;
         height: 44px;
         border-radius: 50%;
-        background: transparent;
-        border: none;
-        color: var(--text-sub);
+        background: var(--menu-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
         font-size: 22px;
         cursor: pointer;
         display: flex;
         justify-content: center;
         align-items: center;
-        box-shadow: none;
-        backdrop-filter: none;
-        opacity: 0.6;
-        transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+        transition: transform 0.2s, box-shadow 0.3s, border-color 0.3s, color 0.3s;
       }
       #mute-toggle:hover {
         transform: scale(1.1);
       }
       #mute-toggle.muted {
-        opacity: 0.3;
+        color: var(--color-red);
       }
 
       /* 優先タスクリスト（サイドバー） */
@@ -1138,7 +1137,14 @@
 
     <button id="theme-toggle" title="テーマ切り替え">🌙</button>
     <button id="cloud-toggle" title="クラウド同期 (未ログイン)">☁️</button>
-    <button id="mute-toggle" title="ミュート (Sound)">🔊</button>
+    <button id="mute-toggle" title="ミュート (Sound)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path id="svg-volume" d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        <line id="svg-mute-1" x1="23" y1="9" x2="17" y2="15" style="display: none;"></line>
+        <line id="svg-mute-2" x1="17" y1="9" x2="23" y2="15" style="display: none;"></line>
+      </svg>
+    </button>
     <button id="redo-toggle" title="進む (Ctrl+Y)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path></svg></button>
     <button id="undo-toggle" title="戻る (Ctrl+Z)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg></button>
 
@@ -1420,9 +1426,16 @@
       const SoundEngine = {
         ctx: null,
 
+        noiseBuffer: null,
+
         init() {
             if (!this.ctx) {
                 this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                const bufferSize = this.ctx.sampleRate * 0.1;
+                this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = this.noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
             }
             if (this.ctx.state === 'suspended') {
                 this.ctx.resume();
@@ -1446,12 +1459,9 @@
         },
 
         _playPop(freq) {
-            const bufferSize = this.ctx.sampleRate * 0.05;
-            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            if (!this.noiseBuffer) return;
             const noise = this.ctx.createBufferSource();
-            noise.buffer = buffer;
+            noise.buffer = this.noiseBuffer;
             const filter = this.ctx.createBiquadFilter();
             filter.type = 'bandpass';
             filter.frequency.value = freq;
@@ -1482,12 +1492,9 @@
             gainPop.gain.exponentialRampToValueAtTime(0.01, now + speed * 2);
             oscPop.connect(gainPop); gainPop.connect(this.ctx.destination);
 
-            const bufferSize = this.ctx.sampleRate * 0.05;
-            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            if (!this.noiseBuffer) return;
             const noise = this.ctx.createBufferSource();
-            noise.buffer = buffer;
+            noise.buffer = this.noiseBuffer;
             const filter = this.ctx.createBiquadFilter();
             filter.type = 'bandpass';
             filter.frequency.setValueAtTime(nf, now);
@@ -1612,11 +1619,15 @@
         window.SoundEngine.muted = !window.SoundEngine.muted;
         const btn = document.getElementById('mute-toggle');
         if (window.SoundEngine.muted) {
-            btn.textContent = '🔇';
             btn.classList.add('muted');
+            document.getElementById('svg-volume').style.display = 'none';
+            document.getElementById('svg-mute-1').style.display = 'block';
+            document.getElementById('svg-mute-2').style.display = 'block';
         } else {
-            btn.textContent = '🔊';
             btn.classList.remove('muted');
+            document.getElementById('svg-volume').style.display = 'block';
+            document.getElementById('svg-mute-1').style.display = 'none';
+            document.getElementById('svg-mute-2').style.display = 'none';
             window.SoundEngine.init();
         }
       });
