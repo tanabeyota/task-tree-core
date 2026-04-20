@@ -5040,23 +5040,41 @@
           },
 
           handleAddParentBtnClick(id, n) {
+            const oldParentId = n.parentId;
+            
+            // 元の親と新しい親の間に新しいノードを作成
             const nId = NodeManager.create(
               n.x + CONFIG.layout.parentXOffset,
               n.y,
-              null,
+              oldParentId,
               "",
-              true,
+              false,
             );
-            State.nodes[nId].childrenIds.push(id);
-            if (!n.parentId) {
-              State.rootIds = State.rootIds.filter((r) => r !== id);
+
+            // 元の親（またはルート）から対象ノードを切り離す
+            if (oldParentId) {
+              State.nodes[oldParentId].childrenIds = State.nodes[oldParentId].childrenIds.filter(c => c !== id);
+            } else {
+              State.rootIds = State.rootIds.filter(r => r !== id);
             }
+
+            // 対象ノードを新しい親の子として紐付ける
+            State.nodes[nId].childrenIds.push(id);
             n.parentId = nId;
+
             NodeManager.recalculateColor(nId);
-            Renderer.getNodeEl(nId)?.classList.remove("is-leaf");
-            Renderer.updateVisibility();
+            
+            // ツリー構造が変化したため、DOMをすべて再構築
+            Renderer.rebuildAll();
             LayoutEngine.resolveCollisions();
             HistoryManager.save();
+            
+            // 新しい親ノードにフォーカスを当てる
+            UIManager.selectOnly(nId);
+            const el = Renderer.getNodeEl(nId);
+            if (el) {
+                UIManager.focusToEnd(el.querySelector('.node-input'));
+            }
           },
 
           handleMinimizeBtnClick(id, n, btn) {
