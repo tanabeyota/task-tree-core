@@ -1452,7 +1452,7 @@
             filter.type = 'lowpass';
             filter.frequency.setValueAtTime(1000, this.ctx.currentTime);
             filter.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + duration);
-            gain.gain.setValueAtTime(0.25, this.ctx.currentTime); 
+            gain.gain.setValueAtTime(0.15, this.ctx.currentTime); 
             gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
             osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
             osc.start(); osc.stop(this.ctx.currentTime + duration);
@@ -1466,7 +1466,7 @@
             filter.type = 'bandpass';
             filter.frequency.value = freq;
             const gain = this.ctx.createGain();
-            gain.gain.setValueAtTime(0.15, this.ctx.currentTime); 
+            gain.gain.setValueAtTime(0.1, this.ctx.currentTime); 
             gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
             noise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
             noise.start();
@@ -1479,7 +1479,7 @@
             oscWood.type = 'sine';
             oscWood.frequency.setValueAtTime(th, now);
             oscWood.frequency.exponentialRampToValueAtTime(th * 0.4, now + dur);
-            gainWood.gain.setValueAtTime(0.3, now); 
+            gainWood.gain.setValueAtTime(0.15, now); 
             gainWood.gain.exponentialRampToValueAtTime(0.01, now + dur);
             oscWood.connect(gainWood); gainWood.connect(this.ctx.destination);
 
@@ -1488,7 +1488,7 @@
             oscPop.type = wave;
             oscPop.frequency.setValueAtTime(pp * 1.5, now);
             oscPop.frequency.exponentialRampToValueAtTime(pp * 0.7, now + speed);
-            gainPop.gain.setValueAtTime(0.2, now); 
+            gainPop.gain.setValueAtTime(0.1, now); 
             gainPop.gain.exponentialRampToValueAtTime(0.01, now + speed * 2);
             oscPop.connect(gainPop); gainPop.connect(this.ctx.destination);
 
@@ -1500,7 +1500,7 @@
             filter.frequency.setValueAtTime(nf, now);
             filter.Q.value = 15; 
             const gainNoise = this.ctx.createGain();
-            gainNoise.gain.setValueAtTime(wet * 0.5, now); 
+            gainNoise.gain.setValueAtTime(wet * 0.3, now); 
             gainNoise.gain.exponentialRampToValueAtTime(0.01, now + speed * 2);
             noise.connect(filter); filter.connect(gainNoise); gainNoise.connect(this.ctx.destination);
 
@@ -1516,7 +1516,7 @@
             osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + duration);
             gain.gain.setValueAtTime(0, this.ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.15, this.ctx.currentTime + 0.1); 
+            gain.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + 0.1); 
             gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
             osc.connect(gain); gain.connect(this.ctx.destination);
             osc.start(); osc.stop(this.ctx.currentTime + duration);
@@ -1567,7 +1567,7 @@
                     osc.frequency.value = freq;
                     const decayTime = 0.8 / (index + 1);
                     gain.gain.setValueAtTime(0, t + delay);
-                    gain.gain.linearRampToValueAtTime(0.12 / (index + 1), t + delay + 0.01);
+                    gain.gain.linearRampToValueAtTime(0.06 / (index + 1), t + delay + 0.01);
                     gain.gain.exponentialRampToValueAtTime(0.001, t + delay + decayTime);
                     osc.connect(gain); gain.connect(this.ctx.destination);
                     osc.start(t + delay); osc.stop(t + delay + decayTime + 0.1);
@@ -1587,7 +1587,7 @@
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(freq, t + delay);
                 gain.gain.setValueAtTime(0, t + delay);
-                gain.gain.linearRampToValueAtTime(0.08, t + delay + 0.02);
+                gain.gain.linearRampToValueAtTime(0.03, t + delay + 0.02);
                 gain.gain.exponentialRampToValueAtTime(0.01, t + delay + 0.5);
                 osc.connect(gain); gain.connect(this.ctx.destination);
                 osc.start(t + delay); osc.stop(t + delay + 0.6);
@@ -1607,12 +1607,10 @@
             const gain = this.ctx.createGain();
             
             osc.type = 'sine';
-            // 木の打撃感：ピッチを一瞬で落とす
             osc.frequency.setValueAtTime(freq * 2, t);
             osc.frequency.exponentialRampToValueAtTime(freq, t + duration);
             
-            // マイルドな音量に調整
-            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.setValueAtTime(0.12, t);
             gain.gain.exponentialRampToValueAtTime(0.01, t + duration);
             
             osc.connect(gain);
@@ -1635,8 +1633,7 @@
             osc.frequency.setValueAtTime(800, t); 
             osc.frequency.exponentialRampToValueAtTime(100, t + 0.03); 
             
-            // 全体のマイルドなバランスに合わせて 0.5 -> 0.15 に音量を低減
-            gain.gain.setValueAtTime(0.15, t);
+            gain.gain.setValueAtTime(0.1, t);
             gain.gain.exponentialRampToValueAtTime(0.01, t + 0.03);
             
             osc.connect(gain);
