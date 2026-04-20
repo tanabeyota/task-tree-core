@@ -1391,6 +1391,188 @@
       // ==========================================
       // 1. 設定と状態 (Configuration & State)
       // ==========================================
+      const SoundEngine = {
+        ctx: null,
+
+        init() {
+            if (!this.ctx) {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        },
+
+        _playSticky(freq, duration) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const filter = this.ctx.createBiquadFilter();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(freq * 5, this.ctx.currentTime + duration);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1000, this.ctx.currentTime);
+            filter.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + duration);
+            gain.gain.setValueAtTime(0.25, this.ctx.currentTime); 
+            gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
+            osc.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(); osc.stop(this.ctx.currentTime + duration);
+        },
+
+        _playPop(freq) {
+            const bufferSize = this.ctx.sampleRate * 0.05;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = freq;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.15, this.ctx.currentTime); 
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+            noise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+            noise.start();
+        },
+
+        _playVacuumPop(th, pp, nf, wet, dur, speed, wave = 'sine') {
+            const now = this.ctx.currentTime;
+            const oscWood = this.ctx.createOscillator();
+            const gainWood = this.ctx.createGain();
+            oscWood.type = 'sine';
+            oscWood.frequency.setValueAtTime(th, now);
+            oscWood.frequency.exponentialRampToValueAtTime(th * 0.4, now + dur);
+            gainWood.gain.setValueAtTime(0.3, now); 
+            gainWood.gain.exponentialRampToValueAtTime(0.01, now + dur);
+            oscWood.connect(gainWood); gainWood.connect(this.ctx.destination);
+
+            const oscPop = this.ctx.createOscillator();
+            const gainPop = this.ctx.createGain();
+            oscPop.type = wave;
+            oscPop.frequency.setValueAtTime(pp * 1.5, now);
+            oscPop.frequency.exponentialRampToValueAtTime(pp * 0.7, now + speed);
+            gainPop.gain.setValueAtTime(0.2, now); 
+            gainPop.gain.exponentialRampToValueAtTime(0.01, now + speed * 2);
+            oscPop.connect(gainPop); gainPop.connect(this.ctx.destination);
+
+            const bufferSize = this.ctx.sampleRate * 0.05;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(nf, now);
+            filter.Q.value = 15; 
+            const gainNoise = this.ctx.createGain();
+            gainNoise.gain.setValueAtTime(wet * 0.5, now); 
+            gainNoise.gain.exponentialRampToValueAtTime(0.01, now + speed * 2);
+            noise.connect(filter); filter.connect(gainNoise); gainNoise.connect(this.ctx.destination);
+
+            oscWood.start(); oscWood.stop(now + dur);
+            oscPop.start(); oscPop.stop(now + speed * 2);
+            noise.start();
+        },
+
+        _playStretch(startFreq, endFreq, duration) {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + duration);
+            gain.gain.setValueAtTime(0, this.ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.15, this.ctx.currentTime + 0.1); 
+            gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(); osc.stop(this.ctx.currentTime + duration);
+        },
+
+        playNodeCreate() {
+            this.init();
+            this._playSticky(200, 0.2);
+        },
+
+        playMakeChild() {
+            this.init();
+            this._playSticky(300, 0.1);
+            this._playPop(100);
+        },
+
+        playNodeMove() {
+            this.init();
+            for(let i=0; i<5; i++) {
+                setTimeout(() => {
+                    if(this.ctx && this.ctx.state === 'running') {
+                        this._playVacuumPop(200+i*50, 1200+i*100, 1200+i*100, 0.2, 0.05, 0.01);
+                    }
+                }, i * 50);
+            }
+        },
+
+        playNodeCollapse() {
+            this.init();
+            this._playStretch(200, 600, 0.1);
+            setTimeout(() => this._playStretch(600, 200, 0.1), 100);
+        },
+
+        playPriorityAdd() {
+            this.init();
+            const t = this.ctx.currentTime;
+            const playGlassHit = (baseFreq, delay) => {
+                const frequencies = [baseFreq, baseFreq * 2.76, baseFreq * 5.4, baseFreq * 8.9];
+                frequencies.forEach((freq, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    const decayTime = 0.8 / (index + 1);
+                    gain.gain.setValueAtTime(0, t + delay);
+                    gain.gain.linearRampToValueAtTime(0.12 / (index + 1), t + delay + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + delay + decayTime);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(t + delay); osc.stop(t + delay + decayTime + 0.1);
+                });
+            };
+            playGlassHit(1200, 0);     
+            playGlassHit(1500, 0.08); 
+        },
+
+        playNodeComplete() {
+            this.init();
+            const t = this.ctx.currentTime;
+            const playChime = (freq, delay) => {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, t + delay);
+                gain.gain.setValueAtTime(0, t + delay);
+                gain.gain.linearRampToValueAtTime(0.08, t + delay + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + delay + 0.5);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(t + delay); osc.stop(t + delay + 0.6);
+            };
+            playChime(2000, 0);
+            playChime(2500, 0.05);
+            playChime(3000, 0.1);
+        },
+
+        playDragDrop() {
+            this.init();
+            const t = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, t);
+            osc.frequency.exponentialRampToValueAtTime(1500, t + 0.06);
+            gain.gain.setValueAtTime(0.3, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(t); osc.stop(t + 0.15);
+        }
+      };
+
       const CONFIG = {
         colors: {
           green: "#60d235",
@@ -2341,6 +2523,9 @@
         },
 
         create(x, y, pId, html = "", focus = true) {
+          if (window.SoundEngine && focus) {
+            SoundEngine.playNodeCreate();
+          }
           Renderer.syncDataFromDOM();
           const id = "node_" + State.counter++;
 
@@ -2545,6 +2730,10 @@
             if (isDeadlineActive) return;
           }
 
+          if (window.SoundEngine && c === "blue" && n.color !== "blue") {
+            SoundEngine.playNodeComplete();
+          }
+
           n.manualColor = c;
           n.color = c;
 
@@ -2594,6 +2783,10 @@
           if (n.color === "blue" && p !== 0) return;
 
           if (p !== 0 && n.priority === p) return;
+
+          if (window.SoundEngine && p > 0 && n.priority === 0) {
+            SoundEngine.playPriorityAdd();
+          }
 
           if (p === 0) {
             // 解除
@@ -4315,6 +4508,7 @@
         },
 
         startNodeDragSession(e, el) {
+          if (window.SoundEngine) SoundEngine.playNodeMove();
           const id = el.id;
           const n = State.nodes[id];
 
@@ -4656,6 +4850,12 @@
                 focalId: id,
                 focalY: dropY,
               };
+
+              if (window.SoundEngine) {
+                if (targetDropId && !isLoop) SoundEngine.playMakeChild();
+                else if (isMoved || isCloned) SoundEngine.playDragDrop();
+              }
+
               LayoutEngine.resolveCollisions(group, focalInfo);
 
               UIManager.updateMenu();
@@ -4764,6 +4964,7 @@
             const startBounds = LayoutEngine._getScaledBounds(id);
             const oldSubtreeBox = LayoutEngine.getSubtreeBox(id);
 
+            if (window.SoundEngine) SoundEngine.playNodeCollapse();
             n.isMinimized = !n.isMinimized;
             if (n.isMinimized) {
               el.classList.add("minimized");
@@ -4832,6 +5033,7 @@
             const scale = NodeManager.getScale(id);
             const oldSubtreeBox = LayoutEngine.getSubtreeBox(id);
 
+            if (window.SoundEngine) SoundEngine.playNodeCollapse();
             n.isCollapsed = isCollapsing;
 
             if (isCollapsing) {
