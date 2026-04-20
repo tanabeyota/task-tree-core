@@ -3928,6 +3928,7 @@
             DOM.viewport.style.cursor = "grabbing";
           } else if (
             e.button === 0 &&
+            e.pointerType !== "touch" &&
             (e.target === DOM.viewport ||
               e.target === DOM.canvasContainer ||
               e.target === DOM.svgLayer)
