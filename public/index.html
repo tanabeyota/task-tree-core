@@ -1665,6 +1665,16 @@
         }
       });
 
+      document.getElementById('undo-toggle').addEventListener('click', () => {
+        HistoryManager.undo();
+        document.activeElement.blur();
+      });
+      
+      document.getElementById('redo-toggle').addEventListener('click', () => {
+        HistoryManager.redo();
+        document.activeElement.blur();
+      });
+
       const CONFIG = {
         colors: {
           green: "#60d235",
