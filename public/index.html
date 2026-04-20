@@ -4798,6 +4798,8 @@
               if (targetEl) targetEl.style.zIndex = 2;
             });
 
+            let isLoop = false;
+
             // ドロップ先への親付け替え
             if (targetDropId && State.nodes[targetDropId]) {
               const tId = targetDropId;
@@ -4806,7 +4808,7 @@
               // draggedRoots: 選択中ノードのうち、親が選択されていないものだけ
               const draggedRoots = NodeManager.filterRoots(Array.from(State.selectedIds), State.selectedIds);
 
-              const isLoop = draggedRoots.some(
+              isLoop = draggedRoots.some(
                 (rId) =>
                   tId === rId ||
                   NodeManager.getDescendants(rId).includes(tId),
