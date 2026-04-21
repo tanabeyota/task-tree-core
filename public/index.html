@@ -4193,8 +4193,31 @@
         let isPenMiddleDrag = false;
 
         document.addEventListener("focusin", (e) => {
-          if (e.target.classList.contains("node-input")) {
+          if (e.target?.classList?.contains("node-input")) {
             State.activeNodeInitialHtml = e.target.innerHTML;
+            
+            if (window.innerWidth <= 768) {
+              setTimeout(() => {
+                const vp = window.visualViewport;
+                if (!vp) return;
+                const offset = window.innerHeight - vp.height;
+                if (offset > 50) {
+                  try {
+                    const rect = e.target.getBoundingClientRect();
+                    const visibleBottom = vp.height - 60;
+                    if (rect.bottom > visibleBottom) {
+                      const diff = rect.bottom - visibleBottom;
+                      const newTy = State.canvasY - diff;
+                      CameraManager.panToTarget(State.canvasX, newTy);
+                    } else if (rect.top < 60) {
+                      const diff = 60 - rect.top;
+                      const newTy = State.canvasY + diff;
+                      CameraManager.panToTarget(State.canvasX, newTy);
+                    }
+                  } catch(err) {}
+                }
+              }, 100);
+            }
           }
         });
 
