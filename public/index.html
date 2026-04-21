@@ -6193,16 +6193,15 @@
               const color = e.target.dataset.color;
               const rootsToRecalculate = new Set();
               State.selectedIds.forEach((id) => {
-                const n = State.nodes[id];
-                // 右端（リーフ）ノード以外は、紫以外への手動色変更を禁止する
-                if (n.childrenIds.length > 0 && color !== "purple") {
-                  return;
-                }
-
-                NodeManager.setColor(id, color, true);
-                if (n.parentId) {
-                  rootsToRecalculate.add(n.parentId);
-                }
+                const targetIds = [id, ...NodeManager.getDescendants(id)];
+                
+                targetIds.forEach(tId => {
+                  NodeManager.setColor(tId, color, true);
+                  const tNode = State.nodes[tId];
+                  if (tNode.parentId) {
+                    rootsToRecalculate.add(tNode.parentId);
+                  }
+                });
               });
               rootsToRecalculate.forEach((pid) =>
                 NodeManager.recalculateColor(pid),
