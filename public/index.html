@@ -5879,19 +5879,19 @@
 
         document
           .getElementById("btn-format-bold")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             exe("bold");
           });
         document
           .getElementById("btn-format-list")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             exe("insertUnorderedList");
           });
         document
           .getElementById("btn-format-highlight")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             const dark =
               document.documentElement.getAttribute("data-theme") === "dark";
@@ -5909,14 +5909,14 @@
 
         document
           .getElementById("btn-timer-menu")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             document.getElementById("timer-dropdown").classList.toggle("show");
           });
 
         document.querySelectorAll(".tab-btn").forEach((t) =>
-          t.addEventListener("pointerdown", (e) => {
+          t.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             document
@@ -5972,7 +5972,7 @@
 
         document
           .getElementById("btn-clear-deadline")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (State.selectedIds.size > 0) {
@@ -6012,7 +6012,7 @@
 
         document
           .getElementById("btn-clear-wait")
-          .addEventListener("pointerdown", (e) => {
+          .addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (State.selectedIds.size > 0) {
@@ -6026,7 +6026,7 @@
             }
           });
 
-                document.getElementById("btn-ai-breakdown").addEventListener("pointerdown", async (e) => {
+                document.getElementById("btn-ai-breakdown").addEventListener("click", async (e) => {
           e.preventDefault();
           e.stopPropagation();
 
@@ -6121,7 +6121,7 @@
           }
         });
         
-        document.getElementById("btn-delete-node").addEventListener("pointerdown", (e) => {
+        document.getElementById("btn-delete-node").addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
           if (State.selectedIds.size > 0) {
@@ -6145,7 +6145,7 @@
         });
         
         document.querySelectorAll(".color-btn").forEach((b) =>
-          b.addEventListener("pointerdown", (e) => {
+          b.addEventListener("click", (e) => {
             e.preventDefault();
             if (State.selectedIds.size > 0) {
               const color = e.target.dataset.color;
@@ -6369,6 +6369,17 @@
         const offset = window.innerHeight - vp.height;
         if (offset > 50) {
           document.documentElement.style.setProperty('--menu-bottom-offset', (offset + 10) + 'px');
+          
+          const activeEl = document.activeElement;
+          if (activeEl && activeEl.classList.contains("node-input")) {
+            const rect = activeEl.getBoundingClientRect();
+            const visibleBottom = vp.height - 60;
+            if (rect.bottom > visibleBottom) {
+              const diff = rect.bottom - visibleBottom;
+              const newTy = State.canvasY - diff;
+              CameraManager.panToTarget(State.canvasX, newTy);
+            }
+          }
         } else {
           document.documentElement.style.setProperty('--menu-bottom-offset', '20px');
         }
