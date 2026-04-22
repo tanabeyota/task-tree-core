@@ -3370,21 +3370,30 @@
             const n = State.nodes[id];
 
             if (n.color !== "blue") {
+              const activeId = document.activeElement?.id;
+              const isEditingTimer =
+                State.selectedIds.has(id) &&
+                (activeId === "menu-deadline" ||
+                  activeId === "menu-duration" ||
+                  activeId === "menu-waithours");
+
               if (n.waitHours > 0 && n.waitStartTime) {
                 if (
                   nowMs >=
                   new Date(n.waitStartTime).getTime() + n.waitHours * 3600000
                 ) {
-                  n.waitHours = 0;
-                  n.waitStartTime = null;
-                  if (State.selectedIds.has(id)) UIManager.updateMenu();
-                  changed = true;
-                  NodeManager.setPriority(id, 1);
-                  setTimeout(() => SidebarManager.update(), 0);
+                  if (!isEditingTimer) {
+                    n.waitHours = 0;
+                    n.waitStartTime = null;
+                    if (State.selectedIds.has(id)) UIManager.updateMenu();
+                    changed = true;
+                    NodeManager.setPriority(id, 1);
+                    setTimeout(() => SidebarManager.update(), 0);
+                  }
                 } else if (
                   State.selectedIds.has(id) &&
                   State.selectedIds.size === 1 &&
-                  document.activeElement?.id !== "menu-waithours"
+                  activeId !== "menu-waithours"
                 ) {
                   const elapsedMs = nowMs - new Date(n.waitStartTime).getTime();
                   const remainH =
@@ -3397,7 +3406,7 @@
               }
               if (n.effectiveStartTimeMs && nowMs >= n.effectiveStartTimeMs) {
                 // 締切超過（重複回避のための前倒し考慮）で自動的に優先順位1に割り込み
-                if (!n.escalated && n.priority !== 1) {
+                if (!n.escalated && n.priority !== 1 && !isEditingTimer) {
                   NodeManager.setPriority(id, 1);
                   n.escalated = true;
                   changed = true;
@@ -4056,8 +4065,9 @@
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             touchStartDist = Math.hypot(dx, dy);
             touchStartScale = State.canvasScale;
-            lastTouchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            lastTouchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            const r = DOM.viewport.getBoundingClientRect();
+            lastTouchMidX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - r.left;
+            lastTouchMidY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - r.top;
           } else if (e.touches.length === 1) {
             const el = e.target.closest(".node-box");
             
@@ -4107,8 +4117,9 @@
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             const dist = Math.hypot(dx, dy);
             
-            const currentMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const currentMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            const r = DOM.viewport.getBoundingClientRect();
+            const currentMidX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - r.left;
+            const currentMidY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - r.top;
 
             State.canvasX += (currentMidX - lastTouchMidX);
             State.canvasY += (currentMidY - lastTouchMidY);
@@ -4240,16 +4251,18 @@
             isPenMiddleDrag = true;
             if (e.pressure > 0) {
               // 接地時はズーム
+              const r = DOM.viewport.getBoundingClientRect();
               isRightDragZooming = true;
-              rightDragStartX = e.clientX;
-              rightDragStartY = e.clientY;
+              rightDragStartX = e.clientX - r.left;
+              rightDragStartY = e.clientY - r.top;
               rightDragStartScale = State.canvasScale;
               DOM.viewport.style.cursor = "ns-resize";
             } else {
               // ホバー時はパン
+              const r = DOM.viewport.getBoundingClientRect();
               isPanning = true;
-              startPanX = e.clientX;
-              startPanY = e.clientY;
+              startPanX = e.clientX - r.left;
+              startPanY = e.clientY - r.top;
               startCanvasX = State.canvasX;
               startCanvasY = State.canvasY;
               DOM.viewport.style.cursor = "grabbing";
@@ -4261,17 +4274,19 @@
             // Alt/Ctrl+中ドラッグ または 右クリックドラッグ → ズーム
             if (!e.target.closest("#viewport")) return;
             e.preventDefault();
+            const r = DOM.viewport.getBoundingClientRect();
             isRightDragZooming = true;
-            rightDragStartX = e.clientX;
-            rightDragStartY = e.clientY;
+            rightDragStartX = e.clientX - r.left;
+            rightDragStartY = e.clientY - r.top;
             rightDragStartScale = State.canvasScale;
             DOM.viewport.style.cursor = "ns-resize";
           } else if (e.button === 1 || (e.button === 2 && e.shiftKey)) {
             // 中ボタン（Alt/Ctrlなし） または Shift+右クリック → パン
             e.preventDefault();
+            const r = DOM.viewport.getBoundingClientRect();
             isPanning = true;
-            startPanX = e.clientX;
-            startPanY = e.clientY;
+            startPanX = e.clientX - r.left;
+            startPanY = e.clientY - r.top;
             startCanvasX = State.canvasX;
             startCanvasY = State.canvasY;
             DOM.viewport.style.cursor = "grabbing";
@@ -4283,9 +4298,10 @@
               e.target === DOM.svgLayer)
           ) {
             e.preventDefault();
+            const r = DOM.viewport.getBoundingClientRect();
             isBoxSelecting = true;
-            boxStartX = e.clientX;
-            boxStartY = e.clientY;
+            boxStartX = e.clientX - r.left;
+            boxStartY = e.clientY - r.top;
 
             DOM.selectionBox.style.left = boxStartX + "px";
             DOM.selectionBox.style.top = boxStartY + "px";
@@ -4305,18 +4321,20 @@
             // ペンタブ中ボタンドラッグ中の動的ホバー/接地の切り替え
             if (e.pressure > 0 && !isRightDragZooming) {
               // 接地：Zoomにシームレス移行
+              const r = DOM.viewport.getBoundingClientRect();
               isRightDragZooming = true;
               isPanning = false;
-              rightDragStartX = e.clientX;
-              rightDragStartY = e.clientY;
+              rightDragStartX = e.clientX - r.left;
+              rightDragStartY = e.clientY - r.top;
               rightDragStartScale = State.canvasScale;
               DOM.viewport.style.cursor = "ns-resize";
             } else if (e.pressure === 0 && !isPanning) {
               // ホバー：Panにシームレス移行
+              const r = DOM.viewport.getBoundingClientRect();
               isPanning = true;
               isRightDragZooming = false;
-              startPanX = e.clientX;
-              startPanY = e.clientY;
+              startPanX = e.clientX - r.left;
+              startPanY = e.clientY - r.top;
               startCanvasX = State.canvasX;
               startCanvasY = State.canvasY;
               DOM.viewport.style.cursor = "grabbing";
@@ -4324,8 +4342,11 @@
           }
 
           if (isPanning) {
-            State.canvasX = startCanvasX + (e.clientX - startPanX);
-            State.canvasY = startCanvasY + (e.clientY - startPanY);
+            const r = DOM.viewport.getBoundingClientRect();
+            const localX = e.clientX - r.left;
+            const localY = e.clientY - r.top;
+            State.canvasX = startCanvasX + (localX - startPanX);
+            State.canvasY = startCanvasY + (localY - startPanY);
             UIManager.updateTransform();
           } else if (isRightDragZooming) {
             const dy = e.clientY - rightDragStartY;
@@ -4342,10 +4363,13 @@
             State.canvasScale = ns;
             UIManager.updateTransform();
           } else if (isBoxSelecting) {
-            const l = Math.min(boxStartX, e.clientX);
-            const t = Math.min(boxStartY, e.clientY);
-            const w = Math.abs(e.clientX - boxStartX);
-            const h = Math.abs(e.clientY - boxStartY);
+            const r = DOM.viewport.getBoundingClientRect();
+            const localX = e.clientX - r.left;
+            const localY = e.clientY - r.top;
+            const l = Math.min(boxStartX, localX);
+            const t = Math.min(boxStartY, localY);
+            const w = Math.abs(localX - boxStartX);
+            const h = Math.abs(localY - boxStartY);
 
             DOM.selectionBox.style.left = l + "px";
             DOM.selectionBox.style.top = t + "px";
@@ -4419,7 +4443,7 @@
             const isTrackpadPinch = e.ctrlKey;
             
             // ② マウスのコロコロか、トラックパッドの2本指スクロールかを判定
-            const isTrackpadScroll = !isTrackpadPinch && (Math.abs(e.deltaY) < 50 || e.deltaY % 1 !== 0 || Math.abs(e.deltaX) > 0);
+            const isTrackpadScroll = !isTrackpadPinch && e.deltaMode === 0 && (Math.abs(e.deltaY) < 50 || e.deltaY % 1 !== 0 || Math.abs(e.deltaX) > 0);
 
             if (isTrackpadScroll) {
               // ✋ 【移動操作】トラックパッドの2本指スクロール
@@ -4428,9 +4452,14 @@
               UIManager.updateTransform();
             } else {
               // 🔍 【Zoom操作】マウスホイールのコロコロ または トラックパッドのピンチ
+              // 行単位(1)やページ単位(2)のスクロールをピクセル単位相当に正規化
+              let dy = e.deltaY;
+              if (e.deltaMode === 1) dy *= 33;
+              else if (e.deltaMode === 2) dy *= 100;
+
               // ピンチ時（deltaYが小さい）とマウスホイール（大）で感度を微調整、Math.expで綺麗に対称スケール
               const zoomSpeed = isTrackpadPinch ? 0.01 : 0.001;
-              let ns = State.canvasScale * Math.exp(-e.deltaY * zoomSpeed);
+              let ns = State.canvasScale * Math.exp(-dy * zoomSpeed);
               ns = Math.max(0.005, Math.min(ns, 50));
 
               const r = DOM.viewport.getBoundingClientRect();
@@ -4721,17 +4750,19 @@
           let lastMouseX = e.clientX;
           let lastMouseY = e.clientY;
 
-          let startWorldX = (e.clientX - State.canvasX) / State.canvasScale;
-          let startWorldY = (e.clientY - State.canvasY) / State.canvasScale;
+          const r = DOM.viewport.getBoundingClientRect();
+          let startWorldX = ((e.clientX - r.left) - State.canvasX) / State.canvasScale;
+          let startWorldY = ((e.clientY - r.top) - State.canvasY) / State.canvasScale;
 
           const move = (me) => {
             lastMouseX = me.clientX;
             lastMouseY = me.clientY;
 
+            const mr = DOM.viewport.getBoundingClientRect();
             const currentWorldX =
-              (me.clientX - State.canvasX) / State.canvasScale;
+              ((me.clientX - mr.left) - State.canvasX) / State.canvasScale;
             const currentWorldY =
-              (me.clientY - State.canvasY) / State.canvasScale;
+              ((me.clientY - mr.top) - State.canvasY) / State.canvasScale;
 
             const dx = currentWorldX - startWorldX;
             const dy = currentWorldY - startWorldY;
@@ -4800,10 +4831,11 @@
                 // 基準位置をリセット
                 e.clientX = me.clientX;
                 e.clientY = me.clientY;
+                const cr = DOM.viewport.getBoundingClientRect();
                 startWorldX =
-                  (me.clientX - State.canvasX) / State.canvasScale;
+                  ((me.clientX - cr.left) - State.canvasX) / State.canvasScale;
                 startWorldY =
-                  (me.clientY - State.canvasY) / State.canvasScale;
+                  ((me.clientY - cr.top) - State.canvasY) / State.canvasScale;
                 return; // 次の move から適用
               } else {
                 return; // 領域外に出るまでは元のノードを移動させない
@@ -4826,8 +4858,9 @@
                 targetDropId = null;
               }
 
-              const mx = (me.clientX - State.canvasX) / State.canvasScale;
-              const my = (me.clientY - State.canvasY) / State.canvasScale;
+              const br = DOM.viewport.getBoundingClientRect();
+              const mx = ((me.clientX - br.left) - State.canvasX) / State.canvasScale;
+              const my = ((me.clientY - br.top) - State.canvasY) / State.canvasScale;
 
               for (let i in State.nodes) {
                 if (group.includes(i) || State.nodes[i].isHidden) continue;
